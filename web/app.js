@@ -2402,7 +2402,8 @@ function setTheme(theme, ev) {
   const x = ev.clientX, y = ev.clientY, rad = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
   document.startViewTransition(apply).ready.then(() => document.documentElement.animate(
     { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${rad}px at ${x}px ${y}px)`] },
-    { duration: 700, easing: 'cubic-bezier(.65, 0, .35, 1)', pseudoElement: '::view-transition-new(root)' }));
+    { duration: 700, easing: 'cubic-bezier(.65, 0, .35, 1)', pseudoElement: '::view-transition-new(root)' }))
+    .catch(() => { });   // повторное нажатие во время анимации прерывает её — это нормально
 }
 // цвет строки состояния телефона — в тон теме
 function syncThemeColor() {
