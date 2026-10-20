@@ -809,20 +809,44 @@ body.v-stats .main, body.v-fav .main, body.v-watch .main, body.v-coll .main { pa
 /* до 1000 px (планшет, телефон в любой ориентации, узкое окно) вкладки — нижняя панель с иконками:
    пять вкладок, поиск и четыре кнопки в шапку уже не помещаются */
 @media (max-width: 1000px) {
-  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
   .search, .search:focus-within { width: auto; flex: 1; }
   .search + .icon-btn, .icon-btn + .icon-btn { margin-left: -6px; }
   /* размытие у шапки сломало бы нижнюю панель вкладок (она внутри шапки), поэтому плотный фон */
   .top.scrolled { backdrop-filter: none; background: rgba(var(--bg-rgb), .97); }
+  /* «жидкое стекло»: парящая капсула над контентом — сквозь неё видны размытые постеры, сверху блик */
   .tabs {
-    position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; gap: 0;
-    height: calc(64px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
-    background: rgba(var(--bg-rgb), .94); backdrop-filter: blur(18px) saturate(1.3); border-top: 1px solid var(--line);
+    --gl-edge: rgba(255, 255, 255, .16); --gl-hi: rgba(255, 255, 255, .28); --gl-tint: rgba(var(--bg-rgb), .42);
+    position: fixed; z-index: 40; left: 0; right: 0; margin: 0 auto; gap: 0;
+    bottom: calc(10px + env(safe-area-inset-bottom)); width: min(calc(100% - 28px), 420px); height: 56px; padding: 4px;
+    border-radius: 28px; border: 1px solid var(--gl-edge);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, .02) 55%), var(--gl-tint);
+    backdrop-filter: blur(20px) saturate(1.9) brightness(1.05); -webkit-backdrop-filter: blur(20px) saturate(1.9) brightness(1.05);
+    box-shadow: inset 0 1px 0 var(--gl-hi), inset 0 -1px 1px rgba(255, 255, 255, .05), 0 12px 32px -10px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .18);
   }
-  .tabs button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; font-size: 11px; letter-spacing: 0; }
-  .tabs .t-ico { display: block; width: 22px; height: 22px; transition: transform .35s var(--ease); }
-  .tabs button.on .t-ico { color: var(--accent); transform: translateY(-1px) scale(1.08); }
-  .tab-ind { bottom: auto; top: -1px; }
+  /* блик по верхней кромке, как у изогнутого стекла */
+  .tabs::before {
+    content: ''; position: absolute; inset: 1px 18px auto; height: 45%; border-radius: 26px 26px 50% 50% / 26px 26px 100% 100%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .13), transparent); pointer-events: none;
+  }
+  .tabs button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; font-size: 10px; letter-spacing: 0; border-radius: 24px; }
+  .tabs .t-ico { display: block; width: 20px; height: 20px; transition: transform .35s var(--ease); }
+  .tabs button.on { color: var(--accent); }
+  .tabs button.on .t-ico { transform: scale(1.06); }
+  /* активная вкладка — капля стекла внутри панели, перетекает к нажатой кнопке */
+  .tab-ind {
+    top: 4px; bottom: 4px; height: auto; border-radius: 24px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .05)), rgba(139, 123, 255, .14);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .05)), color-mix(in srgb, var(--accent) 15%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .07);
+    transition: left .5s cubic-bezier(.3, 1.5, .5, 1), width .5s cubic-bezier(.3, 1.5, .5, 1);
+  }
+  :root[data-theme="light"] .tabs {
+    --gl-edge: rgba(255, 255, 255, .75); --gl-hi: rgba(255, 255, 255, .95); --gl-tint: rgba(255, 255, 255, .62);
+    box-shadow: inset 0 1px 0 var(--gl-hi), 0 12px 30px -12px rgba(24, 28, 70, .35), 0 1px 4px rgba(24, 28, 70, .1);
+  }
+  :root[data-theme="light"] .tabs button:not(.on) { color: #3d4257; }
+  :root[data-theme="light"] .tab-ind { background: rgba(255, 255, 255, .75); box-shadow: 0 2px 8px -2px rgba(24, 28, 70, .2), inset 0 0 0 1px rgba(255, 255, 255, .9); }
   #toasts { bottom: calc(80px + env(safe-area-inset-bottom)); }
 
   /* фильтры: категории — одна лента во всю ширину (листается пальцем), под ней выпадающие списки */

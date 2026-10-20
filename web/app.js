@@ -870,8 +870,8 @@ function buildCountry() {
 
 function moveTabInd() {
   const on = $('#tabs button.on'), ind = $('.tab-ind');
-  // на телефоне у вкладок нет боковых отступов — полоска занимает середину кнопки
-  const pad = parseFloat(getComputedStyle(on).paddingLeft) || on.offsetWidth * .3;
+  // на телефоне и планшете индикатор — стеклянная капсула во всю кнопку
+  const pad = matchMedia('(max-width: 1000px)').matches ? 0 : parseFloat(getComputedStyle(on).paddingLeft);
   ind.style.left = (on.offsetLeft + pad) + 'px';
   ind.style.width = Math.max(0, on.offsetWidth - pad * 2) + 'px';
 }
