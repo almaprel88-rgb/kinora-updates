@@ -933,6 +933,53 @@ function watchLinks(m) {
   return links.map(([n, u]) => `<a class="wlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${n}${out}</a>`).join('');
 }
 
+// трейлер: страница видео на Кинопоиске, запасные варианты — поиск на Rutube и VK Видео
+function trailerLinks(m) {
+  const q = encodeURIComponent(`${m.title} ${m.year || ''} трейлер`);
+  const play = '<svg class="tr-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg>';
+  const out = '<svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v5H5V7h5"/></svg>';
+  return [
+    m.kp && ['Кинопоиск', 'https://www.kinopoisk.ru/film/' + encodeURIComponent(m.kp) + '/video/'],
+    ['Rutube', 'https://rutube.ru/search/?query=' + q],
+    ['VK Видео', 'https://vkvideo.ru/?q=' + q],
+  ].filter(Boolean).map(([n, u], i) =>
+    `<a class="wlink${i ? '' : ' tr-main'}" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${i ? '' : play}${n}${out}</a>`).join('');
+}
+
+/* ---------- похожие фильмы: считаются на месте, без интернета ---------- */
+function similarTo(m, n = 14) {
+  const g = new Set(m.genres.filter(x => x !== 'Сериал')), dirs = new Set(people(m.director)), acts = new Set(m.actors);
+  const ser = isSeries(m), c0 = (m.country || [])[0], res = [];
+  for (const o of S.movies) {
+    if (o === m || o.id === m.id) continue;
+    const shared = o.genres.filter(x => g.has(x));
+    const dir = people(o.director).find(d => dirs.has(d));
+    const act = o.actors.filter(a => acts.has(a));
+    if (!dir && !act.length && shared.length < Math.min(2, g.size)) continue;
+    // общие жанры важнее, если их доля высокая: «драма» одна на двоих — слабая связь, «фантастика+драма+приключения» — сильная
+    let s = shared.length * 1.2 + 4 * shared.length / Math.max(g.size, o.genres.length, 1);
+    if (dir) s += 3.5;
+    s += Math.min(act.length, 3) * 1.6;
+    if (m.year && o.year) { const d = Math.abs(m.year - o.year); s += d <= 3 ? 1.2 : d <= 8 ? .7 : d <= 15 ? .3 : 0; }
+    if (c0 && (o.country || [])[0] === c0) s += .8;
+    if (isSeries(o) !== ser) s -= 3;
+    if (o.imdb) s += (o.imdb - 6.5) * .6;
+    const why = dir ? 'Тот же режиссёр' : act.length ? act[0] : shared.slice(0, 2).join(' · ');
+    res.push([s, o, why]);
+  }
+  return res.sort((a, b) => b[0] - a[0]).slice(0, n);
+}
+
+function similarHTML(m) {
+  const list = similarTo(m);
+  if (!list.length) return '';
+  return `<div class="similar"><div class="sim-h"><h3>Похожие фильмы</h3><span>по жанрам, режиссёру и актёрам</span></div>
+    <div class="sim-row">${list.map(([, o, why]) => `<button class="sim" data-sim="${esc(o.id)}">
+      <div class="sim-p">${posterHTML(o, false)}</div>
+      <b>${esc(o.title)}</b><small>${o.year || ''}${o.imdb ? ' · IMDb ' + o.imdb.toFixed(1) : ''}</small><em>${esc(why)}</em>
+    </button>`).join('')}</div></div>`;
+}
+
 /* ---------- журнал просмотров и прогресс сериала ---------- */
 // даты хранятся как «ГГГГ-ММ-ДД» по местному времени
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1013,6 +1060,7 @@ function openDetail(m, from) {
           </dl>
           ${m.desc ? `<p class="d-desc">${esc(m.desc)}</p>` : ''}
           <div class="where"><span class="where-l">Где смотреть</span>${watchLinks(m)}</div>
+          <div class="where"><span class="where-l">Трейлер</span>${trailerLinks(m)}</div>
           <div class="wlog"></div>
           <div class="rate">
             <div>
@@ -1039,6 +1087,7 @@ function openDetail(m, from) {
             </div>
           </div>
           <div class="notes"><label>Заметки</label><textarea placeholder="Что запомнилось, с кем смотрели, что пересмотреть…">${esc(r ? r.comment : '')}</textarea></div>
+          ${similarHTML(m)}
         </div>
       </div>
     </div>`;
@@ -1083,6 +1132,7 @@ function openDetail(m, from) {
   if (next) next.onclick = () => step(1);
   $$('[data-act]', detail).forEach(b => b.onclick = () => action(m, b.dataset.act, b));
   $$('[data-person]', detail).forEach(b => b.onclick = () => showPerson(b.dataset.person));
+  $$('[data-sim]', detail).forEach(b => b.onclick = () => openDetail(S.movies.find(o => o.id === b.dataset.sim)));
   paintWatchLog(m);
 
   updateHeart(m);
