@@ -44,6 +44,9 @@ const isSeries = m => m.genres.includes('Сериал');
 // режиссёров в базе пишут через запятую: «Сарик Андреасян, Давид Дадунашвили»
 const people = s => String(s || '').split(/\s*,\s*/).filter(Boolean);
 const hasPerson = (m, p) => people(m.director).includes(p) || m.actors.includes(p);
+// продолжительность: «2 ч 49 мин»; у сериалов — длина серии
+const minTxt = n => n >= 60 ? `${Math.floor(n / 60)} ч${n % 60 ? ' ' + (n % 60) + ' мин' : ''}` : `${n} мин`;
+const runTxt = m => isSeries(m) ? `${minTxt(m.min)} серия` : minTxt(m.min);
 
 /* ================= состояние ================= */
 // y1/y2 — выбранный диапазон годов, yMin/yMax — границы по всей базе
@@ -513,7 +516,7 @@ function showHero(i) {
   const t = $('#heroText');
   t.innerHTML = `<div class="eyebrow">${s >= 0 ? 'Вы оценили · ' + fmt(s) : 'В центре внимания'}</div>
     <h1>${esc(m.title)}</h1>
-    <div class="meta"><b>${m.year || ''}</b>${m.genres.slice(0, 3).map(g => '<i>●</i>' + esc(g)).join('')}<i>●</i>реж. ${esc(m.director || '—')}</div>
+    <div class="meta"><b>${m.year || ''}</b>${m.min ? '<i>●</i>' + runTxt(m) : ''}${m.genres.slice(0, 3).map(g => '<i>●</i>' + esc(g)).join('')}<i>●</i>реж. ${esc(m.director || '—')}</div>
     <p>${esc(m.desc || '')}</p>
     <div class="acts"><button class="btn grad" id="heroRate">Оценить фильм</button><button class="btn ghost" id="heroNext">Следующий →</button></div>`;
   t.classList.remove('swap'); void t.offsetWidth; t.classList.add('swap');
@@ -557,6 +560,7 @@ function render() {
   $('#stats').classList.toggle('hidden', !stats);
   $('#colls').classList.toggle('hidden', !collList);
   $('#filters').classList.toggle('hidden', noGrid);
+  $('#mBar').classList.toggle('hidden', noGrid);
   grid.classList.toggle('hidden', noGrid);
   renderSectActs(coll, collList);
   if (noGrid) {
@@ -1035,7 +1039,7 @@ function openDetail(m, from) {
           <div class="d-poster">${posterHTML(m, false)}</div>
           <div class="d-mhead">
             <div class="d-title">${esc(m.title)}</div>
-            <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${imdbTag(m)}</div>
+            <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${m.min ? ' · ' + runTxt(m) : ''}${imdbTag(m)}</div>
           </div>
           <div class="d-actions">
             <button class="btn heart" data-act="fav"></button>
@@ -1051,7 +1055,7 @@ function openDetail(m, from) {
         </div>
         <div class="d-right">
           <div class="d-title">${esc(m.title)}</div>
-          <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${imdbTag(m)}</div>
+          <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${m.min ? ' · ' + runTxt(m) : ''}${imdbTag(m)}</div>
           <div class="d-chips">${m.genres.map(g => `<span>${esc(g)}</span>`).join('')}</div>
           <dl class="d-info">
             <dt>Режиссёр</dt><dd class="who">${personLinks(people(m.director))}</dd>
@@ -1525,6 +1529,7 @@ function renderStats() {
   const tile = (v, l, i) => `<div class="panel tile" style="animation-delay:${i * 60}ms"><div class="v">${v}</div><div class="l">${l}</div></div>`;
   let html = tile(S.movies.length, 'фильмов в базе', 0) + tile(rated.length, 'оценено', 1) +
     tile(avg >= 0 ? avg.toFixed(1) : '—', 'средняя оценка', 2) + tile(favs, 'в избранном', 3);
+  html += yearBanner(180);
 
   if (!rated.length) {
     html += `<div class="panel span4"><div class="nodata">Пока нет ни одной оценки. Откройте любой фильм и проставьте баллы по критериям — здесь появятся графики и ваш личный топ.</div></div>`;
@@ -1574,12 +1579,13 @@ function renderStats() {
   html += `<div class="panel span2" style="animation-delay:440ms"><h3>Страны <small>по числу оценок</small></h3>${cl.length
     ? cl.map(x => `<div class="crow" data-country="${esc(x.c)}" title="Показать фильмы: ${esc(x.c)}">${bar(`${x.c} (${x.n})`, x.a, 10, TIERS[tierIdx(x.a)], x.a.toFixed(1))}</div>`).join('')
     : '<div class="nodata">У оценённых фильмов не указана страна</div>'}</div>`;
-  html += monthsPanel(460, 'span2');
+  html += monthsPanel(460, 'span2') + timePanel(480);
 
   st.innerHTML = html + achPanel(500) + accentPanel() + backupPanel();
   wireBackup(st);
   countUp(st);
   $$('.trow', st).forEach(rw => rw.onclick = () => { S.list = top.map(x => x.m); openDetail(S.movies.find(m => m.id === rw.dataset.id), $('.th', rw)); });
+  wireYear(st);
   $$('.crow', st).forEach(rw => rw.onclick = () => {
     Object.assign(S, { country: rw.dataset.country, person: null });
     syncCountry();
@@ -1587,6 +1593,251 @@ function renderStats() {
   });
   requestAnimationFrame(() => requestAnimationFrame(() => $$('.fil', st).forEach(f => f.style[f.closest('.mo-bar') ? 'height' : 'width'] = f.dataset.w + '%')));
 }
+
+/* ---------- время в кино и итоги года ---------- */
+// когда смотрели: отметки «Просмотры», а без них — день первой оценки
+function watchDates(m) {
+  const r = R(m.id);
+  if (!r) return [];
+  if ((r.views || []).length) return r.views;
+  const at = ov(m) >= 0 && (r.ratedAt || r.updated);
+  return at ? [dayKey(new Date(at))] : [];
+}
+// фильмы, просмотренные в году y (или за всё время, если y не задан): { m, s, n — сколько раз }
+function watchedIn(y) {
+  return S.movies.map(m => {
+    const ds = watchDates(m).filter(d => !y || d.startsWith(y + '-'));
+    return ds.length ? { m, s: ov(m), n: ds.length, ds } : null;
+  }).filter(Boolean);
+}
+// минуты просмотра: у сериалов длительность всего сериала неизвестна — считаются только фильмы
+const filmMinutes = list => list.reduce((a, x) => a + (!isSeries(x.m) && x.m.min ? x.m.min * x.n : 0), 0);
+const watchYears = () => [...new Set(S.movies.flatMap(watchDates).map(d => d.slice(0, 4)))].sort().reverse();
+
+function timePanel(delay) {
+  const list = watchedIn(), films = list.filter(x => !isSeries(x.m) && x.m.min);
+  const mins = filmMinutes(list);
+  if (!mins) return '';
+  const h = Math.round(mins / 60), longest = films.reduce((a, x) => !a || x.m.min > a.m.min ? x : a, null);
+  const avg = Math.round(films.reduce((a, x) => a + x.m.min, 0) / films.length);
+  // наглядные сравнения
+  const cmp = [
+    ['✈️', mins / 480, 'перелётов Москва → Владивосток'],
+    ['🚆', mins / 9000, 'поездок Москва → Владивосток на поезде'],
+    ['🌍', mins / (88 * 60), 'кругосветок на воздушном шаре за 88 часов'],
+    ['📺', mins / 22, 'серий «Друзей» подряд'],
+  ].filter(c => c[1] >= 1).slice(0, 2);
+  return `<div class="panel span4 time-p" style="animation-delay:${delay}ms">
+    <div class="tp-big"><small>Время в кино</small><div class="tp-v"><b class="v">${h}</b><em>${plural(h, 'час', 'часа', 'часов')}</em></div>
+      <div class="tp-sub">≈ ${(mins / 1440).toFixed(1).replace('.', ',')} суток · ${films.length} ${plural(films.length, 'фильм', 'фильма', 'фильмов')}${list.length > films.length ? ' (без сериалов)' : ''}</div></div>
+    <div class="tp-facts">
+      <div><span>⏱️</span><p>Средняя длина фильма<b>${minTxt(avg)}</b></p></div>
+      ${longest ? `<div class="tp-long" data-id="${esc(longest.m.id)}"><span>🐘</span><p>Самый длинный<b>${esc(longest.m.title)} — ${minTxt(longest.m.min)}</b></p></div>` : ''}
+      ${cmp.map(([i, v, t]) => `<div><span>${i}</span><p>Это как<b>${v >= 10 ? Math.round(v) : v.toFixed(1).replace('.', ',').replace(',0', '')} ${t}</b></p></div>`).join('')}
+    </div></div>`;
+}
+
+function yearBanner(delay) {
+  const years = watchYears();
+  if (!years.length) return '';
+  const y = years[0], list = watchedIn(y), h = Math.round(filmMinutes(list) / 60);
+  return `<div class="panel span4 yr-banner" style="animation-delay:${delay}ms">
+    <div class="yb-art">${list.slice(0, 5).map((x, i) => `<div class="yb-p" style="--i:${i}">${posterHTML(x.m, false)}</div>`).join('')}</div>
+    <div class="yb-t"><small>Итоги года</small><h3>Мой ${y} в кино</h3>
+      <p>${list.length} ${plural(list.length, 'фильм', 'фильма', 'фильмов')}${h ? ` · ${h} ${plural(h, 'час', 'часа', 'часов')}` : ''} — лучший фильм, любимый жанр, ваш тип зрителя и многое другое</p>
+      <div class="yb-acts"><button class="btn grad" data-year="${y}">Смотреть итоги ▶</button>
+      ${years.slice(1).map(o => `<button class="btn ghost sm" data-year="${o}">${o}</button>`).join('')}</div></div></div>`;
+}
+
+function wireYear(root) {
+  $$('[data-year]', root).forEach(b => b.onclick = () => openYear(b.dataset.year));
+  const lg = $('.tp-long', root);
+  if (lg) lg.onclick = () => openDetail(S.movies.find(m => m.id === lg.dataset.id));
+}
+
+/* ---------- «Мой год в кино»: истории на весь экран ---------- */
+const yearM = $('#yearM');
+let yr = null;   // { slides, i, timer, t0, left, paused }
+const YR_MS = 7000;
+
+function topBy(list, key) {
+  const c = {};
+  list.forEach(x => key(x.m).forEach(k => { if (k) c[k] = (c[k] || 0) + 1; }));
+  return Object.entries(c).sort((a, b) => b[1] - a[1]);
+}
+
+function yearSlides(y) {
+  const list = watchedIn(y), rated = list.filter(x => x.s >= 0).sort((a, b) => b.s - a.s);
+  const films = list.filter(x => !isSeries(x.m)), series = list.length - films.length;
+  const mins = filmMinutes(list), hours = Math.round(mins / 60);
+  const P = (m, cls = '') => `<div class="ys-poster ${cls}">${posterHTML(m, false)}</div>`;
+  const n = (v, a, b, c) => `${v} ${plural(v, a, b, c)}`;
+  const sl = [];
+
+  sl.push({ bg: 1, html: `<div class="ys-logo">kinora</div><small class="ys-k">Итоги года</small>
+    <h1 class="ys-huge">${y}</h1><p class="ys-lead">ваш год в кино</p>
+    <div class="ys-fan">${rated.slice(0, 5).map((x, i) => `<div style="--i:${i - 2}">${posterHTML(x.m, false)}</div>`).join('')}</div>` });
+
+  sl.push({ bg: 2, html: `<small class="ys-k">Вы посмотрели</small>
+    <div class="ys-num">${films.length}</div><p class="ys-lead">${plural(films.length, 'фильм', 'фильма', 'фильмов')}${series ? ` и ${n(series, 'сериал', 'сериала', 'сериалов')}` : ''}</p>
+    ${hours ? `<div class="ys-chip">⏱️ ${n(hours, 'час', 'часа', 'часов')} перед экраном</div>
+    <p class="ys-note">это ${(mins / 1440).toFixed(1).replace('.', ',')} суток без перерыва${films.length ? ` — в среднем ${minTxt(Math.round(mins / films.reduce((a, x) => a + x.n, 0)))} на фильм` : ''}</p>` : ''}` });
+
+  const genres = topBy(list, m => m.genres.filter(g => g !== 'Сериал'));
+  if (genres.length) {
+    const max = genres[0][1];
+    sl.push({ bg: 3, html: `<small class="ys-k">Ваш жанр года</small><h2 class="ys-big">${esc(genres[0][0])}</h2>
+      <p class="ys-lead">${n(genres[0][1], 'фильм', 'фильма', 'фильмов')}</p>
+      <div class="ys-bars">${genres.slice(0, 5).map(([g, v], i) => `<div style="--w:${v / max * 100}%;--i:${i}"><span>${esc(g)}</span><i></i><b>${v}</b></div>`).join('')}</div>` });
+  }
+
+  if (rated.length) {
+    const b = rated[0], t = TIERS[tierIdx(b.s)];
+    sl.push({ bg: 4, html: `<small class="ys-k">Фильм года</small>${P(b.m, 'big')}
+      <h2 class="ys-mid">${esc(b.m.title)}</h2><p class="ys-note">${[b.m.year, b.m.director].filter(Boolean).map(esc).join(' · ')}</p>
+      <div class="ys-score" style="--t1:${t.c1};--t2:${t.c2}">${fmt(b.s)}<small>${t.name}</small></div>` });
+  }
+  if (rated.length >= 3) {
+    sl.push({ bg: 5, html: `<small class="ys-k">Ваш топ-5 года</small>
+      <div class="ys-top">${rated.slice(0, 5).map((x, i) => `<div class="ys-tr" style="--i:${i}"><b>${i + 1}</b>${P(x.m)}<p>${esc(x.m.title)}<small>${x.m.year || ''}</small></p><em>${fmt(x.s)}</em></div>`).join('')}</div>` });
+  }
+
+  const dirs = topBy(list, m => people(m.director)).filter(d => d[1] >= 2);
+  const acts = topBy(list, m => m.actors).filter(d => d[1] >= 2);
+  if (dirs.length || acts.length) {
+    sl.push({ bg: 6, html: `<small class="ys-k">С кем вы провели этот год</small>
+      ${dirs.length ? `<div class="ys-person"><span>🎬</span><p>Режиссёр года<b>${esc(dirs[0][0])}</b><small>${n(dirs[0][1], 'фильм', 'фильма', 'фильмов')}</small></p></div>` : ''}
+      ${acts.length ? `<div class="ys-person"><span>⭐</span><p>Актёр года<b>${esc(acts[0][0])}</b><small>${n(acts[0][1], 'фильм', 'фильма', 'фильмов')}</small></p></div>` : ''}
+      ${acts.length > 1 ? `<p class="ys-note">а ещё: ${acts.slice(1, 4).map(a => esc(a[0])).join(', ')}</p>` : ''}` });
+  }
+
+  const yrs = list.filter(x => x.m.year).sort((a, b) => a.m.year - b.m.year);
+  if (yrs.length >= 2) {
+    const old = yrs[0].m, nw = yrs[yrs.length - 1].m;
+    const avgY = Math.round(yrs.reduce((a, x) => a + x.m.year, 0) / yrs.length);
+    const dec = topBy(yrs, m => [Math.floor(m.year / 10) * 10 + '-е']);
+    sl.push({ bg: 7, html: `<small class="ys-k">Машина времени</small>
+      <div class="ys-span"><div>${P(old)}<b>${old.year}</b><small>${esc(old.title)}</small></div><i></i><div>${P(nw)}<b>${nw.year}</b><small>${esc(nw.title)}</small></div></div>
+      <p class="ys-lead">Ваше десятилетие — ${dec[0][0]}</p><p class="ys-note">средний год выхода ваших фильмов — ${avgY}</p>` });
+  }
+
+  const cs = topBy(list, m => m.country || []);
+  if (cs.length >= 2) {
+    sl.push({ bg: 8, html: `<small class="ys-k">Кинопутешествие</small><div class="ys-num">${cs.length}</div>
+      <p class="ys-lead">${plural(cs.length, 'страна', 'страны', 'стран')} на экране</p>
+      <div class="ys-flags">${cs.slice(0, 6).map(([c, v], i) => `<span style="--i:${i}">${esc(c)}<b>${v}</b></span>`).join('')}</div>` });
+  }
+
+  const vsI = rated.filter(x => x.m.imdb);
+  if (vsI.length >= 3) {
+    const d = vsI.reduce((a, x) => a + x.s - x.m.imdb, 0) / vsI.length;
+    const far = vsI.reduce((a, x) => Math.abs(x.s - x.m.imdb) > Math.abs(a.s - a.m.imdb) ? x : a);
+    const kind = d > .4 ? ['Добрый зритель', 'Вы ставите в среднем на ' + d.toFixed(1) + ' выше, чем IMDb'] : d < -.4 ? ['Строгий критик', 'Вы ставите в среднем на ' + (-d).toFixed(1) + ' ниже, чем IMDb'] : ['Голос народа', 'Ваши оценки почти совпадают с IMDb'];
+    sl.push({ bg: 9, html: `<small class="ys-k">Вы против IMDb</small><h2 class="ys-big">${kind[0]}</h2><p class="ys-lead">${kind[1]}</p>
+      <div class="ys-vs">${P(far.m)}<div><small>Главное расхождение</small><b>${esc(far.m.title)}</b>
+        <p>Вы: <em>${fmt(far.s)}</em> · IMDb: <em>${far.m.imdb.toFixed(1)}</em></p></div></div>` });
+  }
+
+  const ms = {};
+  list.forEach(x => x.ds.forEach(d => { const k = d.slice(5, 7); ms[k] = (ms[k] || 0) + 1; }));
+  if (Object.keys(ms).length >= 3) {
+    const mx = Math.max(...Object.values(ms)), best = Object.entries(ms).sort((a, b) => b[1] - a[1])[0];
+    const mn = k => new Date(2000, +k - 1, 1).toLocaleDateString('ru-RU', { month: 'long' });
+    sl.push({ bg: 10, html: `<small class="ys-k">Самый киношный месяц</small><h2 class="ys-big">${mn(best[0])}</h2>
+      <p class="ys-lead">${n(best[1], 'просмотр', 'просмотра', 'просмотров')}</p>
+      <div class="ys-months">${Array.from({ length: 12 }, (_, i) => { const k = String(i + 1).padStart(2, '0'), v = ms[k] || 0;
+        return `<div style="--h:${v / mx * 100}%;--i:${i}"><i></i><small>${mn(k).slice(0, 3)}</small></div>`; }).join('')}</div>` });
+  }
+
+  if (rated.length) {
+    const avg = rated.reduce((a, x) => a + x.s, 0) / rated.length;
+    const crit = CRIT.map(c => { const v = rated.map(x => (R(x.m.id).scores || {})[c]).filter(Boolean); return [c, v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0]; }).sort((a, b) => b[1] - a[1]);
+    const type = avg >= 8 ? ['🌟', 'Восторженный зритель', 'Вы умеете находить лучшее в каждом фильме']
+      : avg >= 7 ? ['🍿', 'Ценитель', 'Вы выбираете хорошее кино и знаете, чего хотите']
+      : avg >= 5.5 ? ['🧐', 'Вдумчивый критик', 'Вас трудно впечатлить, но если получилось — это настоящее кино']
+      : ['🗡️', 'Беспощадный критик', 'Вы не прощаете фильмам слабых мест'];
+    sl.push({ bg: 11, html: `<small class="ys-k">Ваш тип зрителя</small><div class="ys-emoji">${type[0]}</div>
+      <h2 class="ys-big">${type[1]}</h2><p class="ys-lead">${type[2]}</p>
+      <div class="ys-chip">средняя оценка ${avg.toFixed(1)}${crit[0][1] ? ` · важнее всего: ${esc(crit[0][0].toLowerCase())}` : ''}</div>` });
+  }
+
+  const worst = rated.length >= 5 ? rated[rated.length - 1] : null;
+  sl.push({ bg: 12, final: true, html: `<div class="ys-logo">kinora</div><small class="ys-k">Ваш ${y} в цифрах</small>
+    <div class="ys-sum">
+      <div><b>${films.length}</b><small>${plural(films.length, 'фильм', 'фильма', 'фильмов')}</small></div>
+      <div><b>${hours}</b><small>${plural(hours, 'час', 'часа', 'часов')}</small></div>
+      <div><b>${genres.length ? esc(genres[0][0]) : '—'}</b><small>жанр года</small></div>
+      <div><b>${rated.length ? (rated.reduce((a, x) => a + x.s, 0) / rated.length).toFixed(1) : '—'}</b><small>средняя оценка</small></div>
+    </div>
+    ${rated.length ? `<div class="ys-final">${P(rated[0].m)}<p><small>Фильм года</small><b>${esc(rated[0].m.title)}</b></p></div>` : ''}
+    ${worst && worst.s < 5 ? `<p class="ys-note">Разочарование года: ${esc(worst.m.title)} (${fmt(worst.s)})</p>` : ''}
+    <div class="ys-btns"><button class="btn ghost" data-ys="again">↺ Сначала</button><button class="btn grad" data-ys="close">Готово</button></div>` });
+  return sl;
+}
+
+function openYear(y, start = 0) {
+  const slides = yearSlides(String(y));
+  yearM.innerHTML = `<div class="ys-wrap">
+    <div class="ys-bars-top">${slides.map(() => '<i><b></b></i>').join('')}</div>
+    <button class="ys-x" title="Закрыть (Esc)">✕</button>
+    <div class="ys-stage"></div>
+    <button class="ys-nav prev" aria-label="Назад"></button><button class="ys-nav next" aria-label="Дальше"></button></div>`;
+  yr = { slides, i: -1, left: YR_MS, paused: false, y };
+  yearM.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  $('.ys-x', yearM).onclick = closeYear;
+  const prev = $('.ys-nav.prev', yearM), next = $('.ys-nav.next', yearM);
+  // короткое нажатие — листать, удержание — пауза
+  [prev, next].forEach(b => {
+    let down = 0;
+    b.onpointerdown = () => { down = Date.now(); ysPause(true); };
+    b.onpointerup = () => { ysPause(false); if (Date.now() - down < 300) ysGo(yr.i + (b === next ? 1 : -1)); };
+    b.onpointerleave = () => ysPause(false);
+  });
+  ysGo(Math.min(start, slides.length - 1));
+}
+
+function ysGo(i) {
+  if (!yr) return;
+  if (i >= yr.slides.length) return;   // на последнем слайде остаёмся
+  i = Math.max(0, i);
+  const s = yr.slides[i], stage = $('.ys-stage', yearM);
+  yr.i = i; yr.left = YR_MS;
+  $('.ys-wrap', yearM).dataset.bg = s.bg;
+  stage.innerHTML = `<div class="ys-slide">${s.html}</div>`;
+  $$('[data-ys]', stage).forEach(b => b.onclick = e => { e.stopPropagation(); b.dataset.ys === 'again' ? ysGo(0) : closeYear(); });
+  // кнопки на финальном слайде должны нажиматься — зоны листания там не перекрывают низ
+  $('.ys-wrap', yearM).classList.toggle('final', !!s.final);
+  $$('.ys-bars-top i', yearM).forEach((b, k) => { b.className = k < i ? 'done' : k === i ? 'on' : ''; b.firstChild.style.animationDuration = YR_MS + 'ms'; });
+  ysTimer();
+}
+function ysTimer() {
+  clearTimeout(yr.timer);
+  if (yr.paused || yr.slides[yr.i].final) return;
+  yr.t0 = Date.now();
+  yr.timer = setTimeout(() => ysGo(yr.i + 1), yr.left);
+}
+function ysPause(p) {
+  if (!yr || yr.paused === p) return;
+  yr.paused = p;
+  yearM.classList.toggle('paused', p);
+  if (p) { clearTimeout(yr.timer); yr.left -= Date.now() - yr.t0; } else ysTimer();
+}
+function closeYear() {
+  if (!yr) return;
+  clearTimeout(yr.timer);
+  yr = null;
+  yearM.classList.remove('open', 'paused');
+  if (!detail.classList.contains('open')) document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+  if (!yr) return;
+  if (e.key === 'Escape') closeYear();
+  else if (e.key === 'ArrowRight' || e.key === ' ') ysGo(yr.i + 1);
+  else if (e.key === 'ArrowLeft') ysGo(yr.i - 1);
+  else return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}, true);
 
 // просмотры за последние 12 месяцев — по отметкам «Посмотрел» в окне фильма
 function monthsPanel(delay, span) {
@@ -2302,6 +2553,7 @@ function setupBackButton() {
     [detail, () => closeDetail()], [roul, () => closeRoulette()],
     [editor, () => editor.classList.remove('open')], [shareM, () => shareM.classList.remove('open')],
     [tourEl, () => endTour()],
+    [$('#yearM'), () => closeYear()],
     // «Назад» на телефоне закрывает и открытое меню фильтра
     ...$$('.dd').map(d => [d, () => d.classList.remove('open')]),
     [$('#filters'), () => $('#filters').classList.remove('open')],
@@ -2379,9 +2631,11 @@ async function init() {
 
   // демо-оценки для проверки вида в обычном браузере (в приложении не используются)
   if (!host && location.hash.includes('demo')) {
-    S.movies.slice(0, 14).forEach((m, i) => {
-      const v = [10, 9, 8, 7, 9, 6, 5, 4, 8, 3, 2, 9, 7, 6][i];
-      S.ratings[m.id] = { scores: Object.fromEntries(CRIT.map((c, k) => [c, Math.max(1, Math.min(10, v + ((k % 3) - 1)))])), manual: 0, comment: '', favorite: i % 4 === 0 };
+    S.movies.filter(m => !isSeries(m)).slice(0, 40).forEach((m, i) => {
+      const v = [10, 9, 8, 7, 9, 6, 5, 4, 8, 3, 2, 9, 7, 6][i % 14];
+      // даты просмотров по месяцам года — для итогов года и графиков
+      const at = new Date(2026, i % 10, 1 + (i * 7) % 27, 21).toISOString();
+      S.ratings[m.id] = { scores: Object.fromEntries(CRIT.map((c, k) => [c, Math.max(1, Math.min(10, v + ((k % 3) - 1)))])), manual: 0, comment: '', favorite: i % 4 === 0, updated: at, ratedAt: at };
     });
   }
 
@@ -2483,6 +2737,7 @@ async function init() {
   if (h.get('view')) { const b = $(`#tabs button[data-view="${h.get('view')}"]`); if (b) b.click(); }
   if (h.get('coll') && S.colls.some(c => c.id === h.get('coll'))) { S.coll = h.get('coll'); render(); }
   if (h.get('open')) openDetail(S.movies.find(m => m.id === h.get('open')));
+  if (h.get('year')) { openYear(h.get('year'), +h.get('slide') || 0); if (h.get('hold')) ysPause(true); }
 
   // первый запуск: плашка с предложением экскурсии; потом её можно вызвать кнопкой «?»
   if (!load('kc_tour', 0)) { $('#helpBtn').classList.add('new'); $('#moreBtn').classList.add('new'); setTimeout(showHelpTip, 1400); }
