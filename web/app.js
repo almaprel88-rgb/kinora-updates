@@ -550,7 +550,7 @@ function render() {
   // collList — список коллекций, coll — открытая коллекция (её фильмы показываются обычной сеткой)
   const stats = S.view === 'stats', coll = S.view === 'coll' ? curColl() : null, collList = S.view === 'coll' && !coll;
   const noGrid = stats || collList;
-  document.body.className = 'v-' + S.view;
+  document.body.className = 'v-' + S.view + (document.body.classList.contains('cols3') ? ' cols3' : '');
   $('#sectTitle').textContent = coll ? coll.name : VIEW_TITLES[S.view];
   $('#counter').classList.toggle('hidden', noGrid);
   $('#hero').classList.toggle('hidden', S.view !== 'all');
@@ -566,9 +566,14 @@ function render() {
     if (stats) renderStats(); else renderColls();
     return;
   }
-  const emptyColl = coll && !coll.ids.length;
-  $('#emptyT').textContent = emptyColl ? 'В коллекции пока пусто' : 'Ничего не нашлось';
-  $('#emptyS').textContent = emptyColl ? 'Откройте любой фильм и нажмите «В коллекцию»' : 'Попробуйте другой запрос или сбросьте фильтры';
+  // пустой список без фильтров — подсказка, как его наполнить, а не «ничего не нашлось»
+  const bare = !filtersOn() && !S.q && !S.person;
+  const [eT, eS] = coll && !coll.ids.length ? ['В коллекции пока пусто', 'Откройте любой фильм и нажмите «В коллекцию»']
+    : bare && S.view === 'fav' ? ['В избранном пока пусто', 'Откройте фильм и нажмите «♥ В избранное» — он появится здесь']
+    : bare && S.view === 'watch' ? ['Список «Смотреть позже» пуст', 'Нажмите «Посмотреть» в окне фильма — и он будет ждать вас здесь']
+    : ['Ничего не нашлось', 'Попробуйте другой запрос или сбросьте фильтры'];
+  $('#emptyT').textContent = eT;
+  $('#emptyS').textContent = eS;
 
   const pc = $('#personChip');
   pc.classList.toggle('hidden', !S.person);
@@ -981,12 +986,17 @@ function openDetail(m, from) {
       <div class="d-wrap">
         <div class="d-left">
           <div class="d-poster">${posterHTML(m, false)}</div>
+          <div class="d-mhead">
+            <div class="d-title">${esc(m.title)}</div>
+            <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${imdbTag(m)}</div>
+          </div>
           <div class="d-actions">
             <button class="btn heart" data-act="fav"></button>
             <button class="btn watch" data-act="watch"></button>
             <button class="btn collb" data-act="coll" aria-expanded="false"></button>
             <button class="btn accent" data-act="share" title="Карточка-картинка с вашей оценкой">${ICON.share} Карточка</button>
             <div class="coll-pick hidden"></div>
+            <button class="btn sm pmore" data-act="pmore">Сменить постер…</button>
             <button class="btn sm" data-act="web">Постер онлайн</button>
             <button class="btn sm" data-act="file">Постер из файла</button>
             ${m.custom ? '<button class="btn sm" data-act="edit">Изменить</button><button class="btn sm danger" data-act="del">Удалить</button>' : ''}
@@ -1217,6 +1227,8 @@ async function action(m, act, btn) {
     if (open) { paintCollPick(m); box.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' }); }
   } else if (act === 'share') {
     openShare(m);
+  } else if (act === 'pmore') {
+    btn.parentElement.classList.add('pm-open');
   } else if (act === 'web') {
     const old = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '⏳ Ищу…';
@@ -2322,6 +2334,14 @@ async function init() {
       S.ratings[m.id] = { scores: Object.fromEntries(CRIT.map((c, k) => [c, Math.max(1, Math.min(10, v + ((k % 3) - 1)))])), manual: 0, comment: '', favorite: i % 4 === 0 };
     });
   }
+
+  // на телефоне постеры в 2 или 3 ряда — кнопка-сетка у заголовка раздела
+  document.body.classList.toggle('cols3', load('kc_cols', 2) === 3);
+  $('#densBtn').onclick = () => {
+    const three = document.body.classList.toggle('cols3');
+    keep('kc_cols', three ? 3 : 2);
+    toast(three ? 'Три постера в ряд' : 'Два постера в ряд');
+  };
 
   if (!achSeen) { achSeen = achDone(); keep('kc_ach', achSeen); }
   buildPills(); buildGenres(); buildCountry(); buildSort(); buildImdb(); buildYears();
