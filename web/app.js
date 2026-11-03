@@ -299,7 +299,14 @@ function newColl(name, desc = '', ids = []) {
 
 /* ================= цвета постеров ================= */
 // пути относительные: страница лежит в web/, рядом папки data/ и posters/ — так работает и в приложении, и на любом хостинге
-const purl = m => localPosters[m.id] || '../posters/' + encodeURIComponent(m.id) + '.jpg' + (pver[m.id] ? '?v=' + pver[m.id] : '');
+// новые постеры в обновление не входят (иначе оно слишком большое) — если на устройстве постера нет,
+// он берётся с сервера обновлений, и дальше этот фильм сразу грузится оттуда
+let remoteBase = null;
+const remoteIds = new Set(load('kc_remote', []));
+const remoteUrl = id => remoteBase + 'posters/' + encodeURIComponent(id) + '.jpg';
+const keepRemote = debounce(() => keep('kc_remote', [...remoteIds]), 1500);
+const isRemote = m => !!remoteBase && remoteIds.has(m.id) && !localPosters[m.id];
+const purl = m => isRemote(m) ? remoteUrl(m.id) : localPosters[m.id] || '../posters/' + encodeURIComponent(m.id) + '.jpg' + (pver[m.id] ? '?v=' + pver[m.id] : '');
 const hsl = (c, dh = 0, dl = 0) => `hsl(${(c[0] + dh + 360) % 360} ${c[1]}% ${Math.min(80, c[2] + dl)}%)`;
 const keepColors = debounce(() => keep('kc_colors', colors), 800);
 
@@ -352,13 +359,24 @@ document.addEventListener('load', e => {
   extractColor(img);
 }, true);
 document.addEventListener('error', e => {
-  if (e.target.tagName === 'IMG' && e.target.closest('.poster')) e.target.remove();
+  const img = e.target;
+  if (img.tagName !== 'IMG' || !img.closest('.poster')) return;
+  const id = img.dataset.id;
+  // своего файла нет — пробуем сервер обновлений (один раз)
+  if (id && remoteBase && !img.dataset.remote && !localPosters[id]) {
+    img.dataset.remote = '1';
+    remoteIds.add(id); keepRemote();
+    img.crossOrigin = 'anonymous';
+    img.src = remoteUrl(id);
+    return;
+  }
+  img.remove();
 }, true);
 
 /* ================= карточки ================= */
 function posterHTML(m, withInfo) {
   return `<div class="poster" style="--h:${hue(m.title)}">
-    <img data-id="${esc(m.id)}" src="${purl(m)}" loading="lazy" decoding="async" alt="">
+    <img data-id="${esc(m.id)}" src="${purl(m)}"${isRemote(m) ? ' crossorigin="anonymous" data-remote="1"' : ''} loading="lazy" decoding="async" alt="">
     <div class="ph">${esc(m.title)}</div>
     ${withInfo ? `<div class="shade"></div><div class="hover-info"><b>Режиссёр</b>${esc(m.director || '—')}</div>` : ''}
   </div>`;
@@ -627,6 +645,11 @@ function showHero(i) {
   const bg = document.createElement('div');
   bg.className = 'hero-bg';
   bg.style.backgroundImage = `url('${purl(m)}')`;
+  if (remoteBase && !isRemote(m)) {
+    const t = new Image();
+    t.onerror = () => { remoteIds.add(m.id); keepRemote(); bg.style.backgroundImage = `url('${remoteUrl(m.id)}')`; };
+    t.src = purl(m);
+  }
   hero.prepend(bg);
   requestAnimationFrame(() => requestAnimationFrame(() => bg.classList.add('on')));
   $$('.hero-bg', hero).slice(1).forEach(old => { old.classList.remove('on'); setTimeout(() => old.remove(), 1500); });
@@ -2747,6 +2770,9 @@ async function init() {
     try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : d; } catch { return d; }
   };
   const base = await get('../data/movies.json', []);
+  // адрес сервера обновлений — оттуда подгружаются постеры, которых нет на устройстве
+  const upd = await get('../data/update.json', null);
+  remoteBase = upd && upd.base ? upd.base.replace(/\/?$/, '/') : null;
   const custom = host ? await get('../data/my_movies.json', []) : load('kc_custom', []);
   S.ratings = host ? await get('../data/ratings.json', {}) : load('kc_ratings', {});
   const fileColls = host ? await get('../data/collections.json', null) : null;
