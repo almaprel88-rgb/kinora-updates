@@ -1727,3 +1727,61 @@ body.cols3 .dens-btn .d3 { display: block; }
   .ys-big { font-size: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .ys-wrap::before { animation: none; } }
+
+/* ---------- подборки по настроению ---------- */
+.moods { padding: 26px 0 4px; }
+.moods-h { display: flex; align-items: baseline; gap: 14px; padding: 0 var(--pad); }
+.moods-h h3 { margin: 0; font: 700 22px/1.1 var(--display); letter-spacing: -.03em; }
+.moods-h span { color: var(--muted); font-size: 13.5px; }
+.moods-box { position: relative; }
+.moods-box::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 60px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--bg)); }
+.moods-row { display: flex; gap: 12px; overflow-x: auto; scroll-behavior: smooth; scroll-snap-type: x proximity; padding: 14px var(--pad) 16px; scroll-padding: 0 var(--pad); }
+.mood {
+  position: relative; flex: none; width: 256px; height: 136px; padding: 14px 16px; border-radius: 18px; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left; scroll-snap-align: start;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--c1) 30%, var(--card)) 0%, color-mix(in srgb, var(--c2) 18%, var(--card)) 100%);
+  border: 1px solid color-mix(in srgb, var(--c1) 30%, transparent);
+  animation: fadeUp .5s var(--ease) both;
+  transition: transform .35s var(--ease), box-shadow .35s, border-color .25s;
+}
+.mood::before { content: ""; position: absolute; inset: auto -30px -50px auto; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c2) 45%, transparent), transparent 70%); pointer-events: none; }
+.mood:hover { transform: translateY(-3px); box-shadow: 0 18px 34px -20px color-mix(in srgb, var(--c1) 80%, transparent); }
+.mood.on { border: 2px solid var(--c1); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c1) 22%, transparent), 0 18px 34px -20px var(--c1); }
+.mood-e { font-size: 24px; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .25)); }
+.mood-t { position: relative; margin-top: 9px; font: 700 15.5px/1.2 var(--display); letter-spacing: -.01em; max-width: 140px; }
+.mood-s { position: relative; margin-top: 4px; color: var(--text3); font-size: 12px; line-height: 1.35; max-width: 136px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mood-n { position: relative; margin-top: auto; color: var(--muted); font-size: 11.5px; font-weight: 600; }
+/* три лучших постера подборки веером в углу */
+.mood-p { position: absolute; right: 12px; top: 14px; width: 66px; height: 92px; }
+.mood-p img { position: absolute; top: 0; right: 0; width: 46px; height: 68px; object-fit: cover; border-radius: 6px; background: var(--card3); box-shadow: 0 6px 14px -6px rgba(0, 0, 0, .7); transition: transform .4s var(--ease); }
+.mood-p img:nth-child(1) { z-index: 3; transform: translate(-4px, 14px) rotate(-2deg); }
+.mood-p img:nth-child(2) { z-index: 2; transform: translate(-22px, 6px) rotate(-9deg); opacity: .9; }
+.mood-p img:nth-child(3) { z-index: 1; transform: translate(10px, 2px) rotate(8deg); opacity: .8; }
+.mood:hover .mood-p img:nth-child(1) { transform: translate(-4px, 10px) rotate(0); }
+.mood:hover .mood-p img:nth-child(2) { transform: translate(-28px, 4px) rotate(-13deg); }
+.mood:hover .mood-p img:nth-child(3) { transform: translate(16px, 0) rotate(12deg); }
+#moodChip { order: -1; }
+/* настроения в окне фильма — ссылки на подборки */
+.d-chips:has(+ .d-moods) { margin-bottom: 10px; }
+.d-moods { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 24px; }
+.d-moods button {
+  padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text2);
+  background: color-mix(in srgb, var(--c1) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c1) 40%, transparent);
+  transition: background .2s, transform .2s var(--ease);
+}
+.d-moods button:hover { background: color-mix(in srgb, var(--c1) 30%, transparent); transform: translateY(-1px); }
+:root[data-theme="light"] .mood { background: linear-gradient(140deg, color-mix(in srgb, var(--c1) 22%, #fff) 0%, color-mix(in srgb, var(--c2) 14%, #fff) 100%); }
+:root[data-theme="light"] .mood-s { color: var(--text2); }
+@media (max-width: 640px) {
+  .moods { padding: 18px 0 0; }
+  .moods-h { flex-direction: column; gap: 2px; }
+  .moods-h h3 { font-size: 19px; }
+  .moods-h span { font-size: 12.5px; }
+  .moods-row { gap: 10px; padding: 12px var(--pad) 12px; }
+  .mood { width: 178px; height: 118px; padding: 12px 13px; border-radius: 16px; }
+  .mood-e { font-size: 20px; }
+  .mood-t { font-size: 14px; max-width: 112px; margin-top: 7px; }
+  .mood-s { display: none; }
+  .mood-p { right: 8px; top: 10px; transform: scale(.82); transform-origin: top right; }
+}
+@media (prefers-reduced-motion: reduce) { .mood, .mood-p img { animation: none; transition: none; } }

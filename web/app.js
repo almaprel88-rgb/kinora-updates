@@ -24,10 +24,38 @@ const TIERS = [
 TIERS.forEach(t => t.c2 = t.c1);
 const SORTS = [
   ['title', 'По названию'], ['new', 'Сначала новые'], ['old', 'Сначала старые'],
-  ['score', 'По моей оценке'], ['imdb', 'По рейтингу IMDb'], ['recent', 'Недавно оценённые'],
+  ['score', 'По моей оценке'], ['imdb', 'По рейтингу IMDb'], ['recent', 'Недавно оценённые'], ['mood', 'Лучшее под настроение'],
 ];
 // пороги фильтра IMDb: 0 — любой рейтинг
 const IMDB_MIN = [[0, 'Любой рейтинг'], [8, '8 и выше'], [7.5, '7.5 и выше'], [7, '7 и выше'], [6.5, '6.5 и выше'], [6, '6 и выше']];
+// подборки по настроению: у фильмов из базы список m.mood готов заранее (жанры IMDb, сюжет, рейтинг),
+// у своих фильмов настроение угадывается по жанрам — moodsOf
+const MOODS = [
+  { id: 'cozy', e: '🛋️', name: 'Уютный вечер', sub: 'Тёплое и доброе кино под плед и чай', c1: '#ffb36b', c2: '#ff6f91' },
+  { id: 'laugh', e: '😂', name: 'Посмеяться от души', sub: 'Комедии, после которых болят щёки', c1: '#ffd44f', c2: '#ff8f3f' },
+  { id: 'love', e: '💞', name: 'Про любовь', sub: 'Романтика, бабочки и разбитые сердца', c1: '#ff7eb3', c2: '#c86bff' },
+  { id: 'tears', e: '🥲', name: 'Поплакать', sub: 'Истории, которые трогают до слёз', c1: '#7fb2ff', c2: '#9a8cff' },
+  { id: 'inspire', e: '✨', name: 'Вдохновиться', sub: 'О том, как люди добиваются своего', c1: '#ffcf5c', c2: '#3fd6a0' },
+  { id: 'adrenaline', e: '⚡', name: 'Адреналин', sub: 'Погони, схватки и пульс под 150', c1: '#ff5f4f', c2: '#ffa24f' },
+  { id: 'chill', e: '🍿', name: 'Мозг на паузу', sub: 'Лёгкие блокбастеры — просто отдохнуть', c1: '#ffa24f', c2: '#e85dff' },
+  { id: 'mind', e: '🌀', name: 'Взрыв мозга', sub: 'Петли времени, сны и сюжеты-головоломки', c1: '#6f8cff', c2: '#4fd8ff' },
+  { id: 'puzzle', e: '🔎', name: 'Распутать загадку', sub: 'Детективы, где хочется угадать разгадку', c1: '#4fc9b0', c2: '#5f7bff' },
+  { id: 'dark', e: '🌑', name: 'Мрачно и атмосферно', sub: 'Нуар, криминал и тяжёлый воздух', c1: '#8a7bd8', c2: '#2f3466' },
+  { id: 'fear', e: '👻', name: 'Страшно до мурашек', sub: 'Ужасы, после которых не выключишь свет', c1: '#a35cff', c2: '#3a1f66' },
+  { id: 'epic', e: '🏔️', name: 'Эпичный размах', sub: 'Огромные миры, битвы и масштаб', c1: '#4fd8ff', c2: '#2f6bff' },
+  { id: 'journey', e: '🧭', name: 'Отправиться в путь', sub: 'Приключения, дороги и далёкие земли', c1: '#52d6a0', c2: '#2f9fd0' },
+  { id: 'family', e: '🧸', name: 'Всей семьёй', sub: 'Можно смотреть с детьми и родителями', c1: '#86e08a', c2: '#3fc9c0' },
+  { id: 'think', e: '🎭', name: 'Кино на подумать', sub: 'Глубокие драмы, которые не отпускают', c1: '#b79cff', c2: '#5f5fd0' },
+  { id: 'war', e: '🎖️', name: 'Тяжело, но важно', sub: 'Война и история без прикрас', c1: '#d0a070', c2: '#6f5040' },
+  { id: 'music', e: '🎵', name: 'Музыка и ритм', sub: 'Мюзиклы и истории о музыкантах', c1: '#ff6fd8', c2: '#6f8cff' },
+  { id: 'binge', e: '📺', name: 'Залипнуть на выходные', sub: 'Сериалы, от которых не оторваться', c1: '#4fd8ff', c2: '#9d7bff' },
+  { id: 'short', e: '🌙', name: 'Коротко, перед сном', sub: 'До полутора часов — и успеете выспаться', c1: '#8fb3ff', c2: '#5a5ad8' },
+  { id: 'gems', e: '💎', name: 'Скрытые жемчужины', sub: 'Высокий рейтинг, но знают о них немногие', c1: '#4fe0d0', c2: '#9d7bff' },
+  { id: 'ours', e: '🪆', name: 'Душевно по-нашему', sub: 'Отечественное кино с теплом и смыслом', c1: '#ff6f6f', c2: '#ffb36b' },
+  { id: 'newyear', e: '🎄', name: 'Новогоднее настроение', sub: 'Ёлка, снег, подарки и чудеса', c1: '#4fd88a', c2: '#ff5f6f' },
+  { id: 'classic', e: '📼', name: 'Проверено временем', sub: 'Классика XX века с высоким рейтингом', c1: '#e0c080', c2: '#a0705f' },
+];
+const MOOD = Object.fromEntries(MOODS.map(x => [x.id, x]));
 const RING_C = 2 * Math.PI * 86;
 const ICON = {
   bookmark: '<svg viewBox="0 0 24 24"><path d="M6 4h12v17l-6-4-6 4z"/></svg>',
@@ -52,7 +80,8 @@ const runTxt = m => isSeries(m) ? `${minTxt(m.min)} серия` : minTxt(m.min);
 // y1/y2 — выбранный диапазон годов, yMin/yMax — границы по всей базе
 // country — фильтр по стране, person — фильмография режиссёра или актёра
 // colls — свои коллекции [{ id, name, desc, ids }], coll — открытая коллекция (null — список коллекций)
-const S = { movies: [], ratings: {}, colls: [], coll: null, view: 'all', tier: 'any', genre: null, imdbMin: 0, country: null, person: null, q: '', sort: 'title', list: [], cur: null, y1: 0, y2: 9999, yMin: 0, yMax: 9999 };
+// mood — выбранная подборка по настроению (id из MOODS)
+const S = { movies: [], ratings: {}, colls: [], coll: null, view: 'all', tier: 'any', genre: null, imdbMin: 0, country: null, person: null, mood: null, q: '', sort: 'title', list: [], cur: null, y1: 0, y2: 9999, yMin: 0, yMax: 9999 };
 const cards = new Map();
 // версия кэша цветов: при замене постеров старые цвета сбрасываются
 const COLORS_VER = 3;
@@ -462,6 +491,7 @@ function matches(m, ignoreTier) {
   if (!imdbOk(m)) return false;
   if (S.country && !madeIn(m, S.country)) return false;
   if (S.person && !hasPerson(m, S.person)) return false;
+  if (S.mood && S.view === 'all' && !moodsOf(m).includes(S.mood)) return false;
   if (!ignoreTier) {
     if (S.tier === 'none' && s >= 0) return false;
     if (typeof S.tier === 'number' && (s < 0 || tierIdx(s) !== S.tier)) return false;
@@ -484,8 +514,83 @@ function sorted(list) {
     score: (a, b) => ov(b) - ov(a) || byTitle(a, b),
     imdb: (a, b) => (b.imdb || 0) - (a.imdb || 0) || (b.imdbVotes || 0) - (a.imdbVotes || 0) || byTitle(a, b),
     recent: (a, b) => ((R(b.id) || {}).updated || '').localeCompare((R(a.id) || {}).updated || '') || byTitle(a, b),
+    mood: (a, b) => moodFit(b) - moodFit(a) || byTitle(a, b),
   }[S.sort];
   return list.sort(f);
+}
+
+/* ================= подборки по настроению ================= */
+// свой фильм без готового списка: настроение по русским жанрам
+function guessMoods(m) {
+  const g = new Set(m.genres), has = (...a) => a.some(x => g.has(x)), r = m.imdb || 0, out = [];
+  const grim = has('Ужасы', 'Триллер', 'Криминал', 'Военный');
+  if (has('Комедия') && !has('Ужасы')) out.push('laugh');
+  if (has('Комедия', 'Мелодрама', 'Мультфильм') && !grim) out.push('cozy');
+  if (has('Мелодрама')) out.push('love');
+  if (has('Боевик')) out.push(has('Драма') ? 'adrenaline' : 'chill');
+  if (has('Ужасы')) out.push('fear');
+  if (has('Детектив')) out.push('puzzle');
+  if (has('Криминал', 'Триллер') && has('Драма')) out.push('dark');
+  if (has('Приключения')) out.push('journey');
+  if (has('Мультфильм') && !grim) out.push('family');
+  if (has('Биография', 'Спорт')) out.push('inspire');
+  if (has('Военный')) out.push('war');
+  if (has('Мюзикл')) out.push('music');
+  if (isSeries(m) && r >= 7.8) out.push('binge');
+  if (has('Драма') && !has('Комедия', 'Боевик', 'Ужасы') && r >= 7.6) out.push('think');
+  if (m.min && m.min <= 95 && !isSeries(m)) out.push('short');
+  if ((isRussian(m) || isSoviet(m)) && r >= 7 && has('Комедия', 'Драма', 'Мелодрама')) out.push('ours');
+  if (m.year && m.year < 2000 && r >= 7.5) out.push('classic');
+  return out;
+}
+const moodsOf = m => m.mood || m._mood || (m._mood = guessMoods(m));
+// порядок внутри подборки: хороший рейтинг, который подтверждён множеством голосов
+const moodFit = m => ((m.imdb || 6) - 4.5) * Math.log10((m.imdbVotes || 0) + 30);
+
+const moodCount = id => S.movies.reduce((n, m) => n + moodsOf(m).includes(id), 0);
+// какие подборки показать первыми — по времени суток и сезону
+function moodOrder() {
+  const h = new Date().getHours(), mon = new Date().getMonth();
+  const first = h < 5 ? ['short', 'fear', 'mind', 'dark'] : h < 12 ? ['inspire', 'laugh', 'journey', 'family']
+    : h < 18 ? ['adrenaline', 'chill', 'journey', 'puzzle'] : ['cozy', 'love', 'laugh', 'mind'];
+  if (mon === 11 || mon === 0) first.unshift('newyear');
+  const ids = [...new Set([...first, ...MOODS.map(x => x.id)])];
+  // новогодняя подборка вне сезона — в самом конце
+  if (!(mon === 11 || mon === 0)) ids.push(ids.splice(ids.indexOf('newyear'), 1)[0]);
+  return ids.map(id => MOOD[id]);
+}
+const moodHello = () => { const h = new Date().getHours(); return h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер'; };
+
+function renderMoods() {
+  const box = $('#moodsRow');
+  const items = moodOrder().map(x => ({ x, n: moodCount(x.id) })).filter(it => it.n >= 6);
+  box.innerHTML = items.map(({ x, n }, i) => {
+    const top = S.movies.filter(m => moodsOf(m).includes(x.id)).sort((a, b) => moodFit(b) - moodFit(a)).slice(0, 3);
+    return `<button class="mood" data-m="${x.id}" style="--c1:${x.c1};--c2:${x.c2};animation-delay:${i * 35}ms" title="${esc(x.sub)}">
+      <span class="mood-e">${x.e}</span>
+      <span class="mood-t">${esc(x.name)}</span>
+      <span class="mood-s">${esc(x.sub)}</span>
+      <span class="mood-n">${n} ${plural(n, 'фильм', 'фильма', 'фильмов')}</span>
+      <span class="mood-p">${top.map(m => `<img src="${purl(m)}" loading="lazy" decoding="async" alt="">`).join('')}</span>
+    </button>`;
+  }).join('');
+  $('#moodsHello').textContent = moodHello() + '! Что у вас за настроение?';
+  $$('.mood', box).forEach(b => b.onclick = () => setMood(S.mood === b.dataset.m ? null : b.dataset.m, true));
+  paintMoods();
+}
+function paintMoods() {
+  $$('#moodsRow .mood').forEach(b => b.classList.toggle('on', b.dataset.m === S.mood));
+}
+// при выборе настроения сортировка сама становится «Под настроение», при сбросе — возвращается прежняя
+let sortBeforeMood = null;
+function setMood(id, scroll) {
+  if (id && !S.mood) sortBeforeMood = S.sort;
+  S.mood = id;
+  if (id) S.sort = 'mood';
+  else if (S.sort === 'mood') S.sort = sortBeforeMood && sortBeforeMood !== 'mood' ? sortBeforeMood : 'title';
+  buildSort();
+  if (S.view !== 'all') { $('#tabs button[data-view="all"]').click(); } else render();
+  if (id && scroll) requestAnimationFrame(() => $('#sectHead').scrollIntoView({ behavior: calm ? 'auto' : 'smooth' }));
 }
 
 /* ================= «в центре внимания» ================= */
@@ -554,9 +659,12 @@ function render() {
   const stats = S.view === 'stats', coll = S.view === 'coll' ? curColl() : null, collList = S.view === 'coll' && !coll;
   const noGrid = stats || collList;
   document.body.className = 'v-' + S.view + (document.body.classList.contains('cols3') ? ' cols3' : '');
-  $('#sectTitle').textContent = coll ? coll.name : VIEW_TITLES[S.view];
+  const mood = S.view === 'all' && S.mood ? MOOD[S.mood] : null;
+  $('#sectTitle').textContent = coll ? coll.name : mood ? `${mood.e} ${mood.name}` : VIEW_TITLES[S.view];
   $('#counter').classList.toggle('hidden', noGrid);
   $('#hero').classList.toggle('hidden', S.view !== 'all');
+  $('#moods').classList.toggle('hidden', S.view !== 'all');
+  paintMoods();
   $('#stats').classList.toggle('hidden', !stats);
   $('#colls').classList.toggle('hidden', !collList);
   $('#filters').classList.toggle('hidden', noGrid);
@@ -582,6 +690,14 @@ function render() {
   const pc = $('#personChip');
   pc.classList.toggle('hidden', !S.person);
   if (S.person) pc.innerHTML = `Фильмы: <b>${esc(S.person)}</b><i>✕</i>`;
+  const mc = $('#moodChip');
+  mc.classList.toggle('hidden', !mood);
+  if (mood) {
+    mc.innerHTML = `Настроение<i>✕</i>`;
+    const d = $('#collDesc');
+    d.textContent = mood.sub;
+    d.classList.remove('hidden');
+  }
   $('#resetF').classList.toggle('hidden', !filtersOn());
 
   S.list = sorted(S.movies.filter(m => matches(m)));
@@ -754,7 +870,8 @@ function buildGenres() {
 }
 
 function buildSort() {
-  $('#sortMenu').innerHTML = SORTS.map(([k, n]) => `<button data-k="${k}">${n}</button>`).join('');
+  // «Под настроение» есть в меню, только пока выбрана подборка
+  $('#sortMenu').innerHTML = SORTS.filter(([k]) => k !== 'mood' || S.mood).map(([k, n]) => `<button data-k="${k}">${n}</button>`).join('');
   const sync = () => {
     $('#sortLabel').textContent = SORTS.find(s => s[0] === S.sort)[1];
     $$('#sortMenu button').forEach(b => b.classList.toggle('on', b.dataset.k === S.sort));
@@ -888,13 +1005,15 @@ function moveTabInd() {
 // фильмография: все фильмы человека из каталога, остальные фильтры сбрасываются, чтобы ничего не спряталось
 function showPerson(name) {
   closeDetail();
-  Object.assign(S, { person: name, q: '', genre: null, tier: 'any', imdbMin: 0, country: null, y1: S.yMin, y2: S.yMax });
+  Object.assign(S, { person: name, mood: null, q: '', genre: null, tier: 'any', imdbMin: 0, country: null, y1: S.yMin, y2: S.yMax });
+  if (S.sort === 'mood') { S.sort = sortBeforeMood && sortBeforeMood !== 'mood' ? sortBeforeMood : 'title'; buildSort(); }
   $('#q').value = '';
   buildGenres(); buildYears(); syncImdb(); syncCountry();
   if (S.view !== 'all') $('#tabs button[data-view="all"]').click(); else render();
   requestAnimationFrame(() => $('#sectHead').scrollIntoView({ behavior: calm ? 'auto' : 'smooth' }));
 }
 $('#personChip').onclick = () => { S.person = null; render(); };
+$('#moodChip').onclick = () => setMood(null);
 
 grid.addEventListener('click', e => {
   const c = e.target.closest('.card');
@@ -1057,6 +1176,7 @@ function openDetail(m, from) {
           <div class="d-title">${esc(m.title)}</div>
           <div class="d-sub">${m.orig && m.orig !== m.title ? esc(m.orig) + ' · ' : ''}${m.year || ''}${m.min ? ' · ' + runTxt(m) : ''}${imdbTag(m)}</div>
           <div class="d-chips">${m.genres.map(g => `<span>${esc(g)}</span>`).join('')}</div>
+          ${moodsOf(m).length ? `<div class="d-moods">${moodsOf(m).filter(id => MOOD[id]).slice(0, 5).map(id => `<button data-mood="${id}" style="--c1:${MOOD[id].c1};--c2:${MOOD[id].c2}" title="Открыть подборку">${MOOD[id].e} ${esc(MOOD[id].name)}</button>`).join('')}</div>` : ''}
           <dl class="d-info">
             <dt>Режиссёр</dt><dd class="who">${personLinks(people(m.director))}</dd>
             ${m.country && m.country.length ? `<dt>Страна</dt><dd>${m.country.map(esc).join(', ')}</dd>` : ''}
@@ -1136,6 +1256,7 @@ function openDetail(m, from) {
   if (next) next.onclick = () => step(1);
   $$('[data-act]', detail).forEach(b => b.onclick = () => action(m, b.dataset.act, b));
   $$('[data-person]', detail).forEach(b => b.onclick = () => showPerson(b.dataset.person));
+  $$('[data-mood]', detail).forEach(b => b.onclick = () => { closeDetail(); setMood(b.dataset.mood, true); });
   $$('[data-sim]', detail).forEach(b => b.onclick = () => openDetail(S.movies.find(o => o.id === b.dataset.sim)));
   paintWatchLog(m);
 
@@ -1305,7 +1426,7 @@ async function action(m, act, btn) {
     cards.get(m.id)?.remove();
     cards.delete(m.id);
     deletePoster(m);
-    saveCustom(); saveRatings(); buildGenres(); buildCountry(); buildYears(); render();
+    saveCustom(); saveRatings(); buildGenres(); buildCountry(); buildYears(); renderMoods(); render();
     toast('Фильм удалён');
   }
 }
@@ -1507,7 +1628,7 @@ function openEditor(m) {
     }, keep);
     const web = isNew && f('web').checked;
     if (isNew) S.movies.push(target); else replaceCard(target);
-    saveCustom(); buildGenres(); buildCountry(); buildYears(); render(); close();
+    saveCustom(); buildGenres(); buildCountry(); buildYears(); renderMoods(); render(); close();
     openDetail(target);
     toast(isNew ? 'Фильм добавлен 🎉' : 'Сохранено');
     if (web) {
@@ -2051,7 +2172,7 @@ async function importBackup() {
   saveRatings(); saveCustom(); saveColls();
   achSeen = achDone(); keep('kc_ach', achSeen);
   S.movies.forEach(m => { const c = cards.get(m.id); if (c) badges(c, m); });
-  buildGenres(); buildCountry(); buildYears(); render();
+  buildGenres(); buildCountry(); buildYears(); renderMoods(); render();
   toast(`✅ Загружено записей: ${entries.length}`);
 }
 
@@ -2086,6 +2207,7 @@ function roulPool() {
     if (roulSrc === 'coll' && !(curColl() || { ids: [] }).ids.includes(m.id)) return false;
     if (S.genre && !m.genres.includes(S.genre)) return false;
     if (S.country && !madeIn(m, S.country)) return false;
+    if (S.mood && !moodsOf(m).includes(S.mood)) return false;
     return inYears(m) && imdbOk(m);
   });
 }
@@ -2095,7 +2217,7 @@ function stripHTML(list) {
 }
 
 function openRoulette() {
-  const cond = [S.genre, S.country, !yearsAll() && `${S.y1}–${S.y2}`, S.imdbMin && `IMDb ${S.imdbMin}+`].filter(Boolean);
+  const cond = [S.mood && MOOD[S.mood].e + ' ' + MOOD[S.mood].name, S.genre, S.country, !yearsAll() && `${S.y1}–${S.y2}`, S.imdbMin && `IMDb ${S.imdbMin}+`].filter(Boolean);
   // внутри открытой коллекции можно крутить только её фильмы
   const inColl = S.view === 'coll' && curColl();
   const srcs = inColl ? [['coll', 'Коллекция'], ...ROUL_SRC] : ROUL_SRC;
@@ -2628,7 +2750,7 @@ async function init() {
     ...m, title: m.title || m.orig || m.id, genres: m.genres || [], actors: m.actors || [],
   }));
   S.sort = load('kc_sort', 'title');
-  if (!SORTS.some(s => s[0] === S.sort)) S.sort = 'title';
+  if (!SORTS.some(s => s[0] === S.sort) || S.sort === 'mood') S.sort = 'title';
 
   // демо-оценки для проверки вида в обычном браузере (в приложении не используются)
   if (!host && location.hash.includes('demo')) {
@@ -2650,6 +2772,7 @@ async function init() {
 
   if (!achSeen) { achSeen = achDone(); keep('kc_ach', achSeen); }
   buildPills(); buildGenres(); buildCountry(); buildSort(); buildImdb(); buildYears();
+  renderMoods();
   render();
   moveTabInd();
   pickHero();
@@ -2694,9 +2817,8 @@ async function init() {
   $('#rouletteBtn').onclick = openRoulette;
   $('#helpBtn').onclick = startTour;
   $('#themeBtn').onclick = e => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', e);
-  // колесо мыши прокручивает ленту жанров по горизонтали
-  const gl = $('#genres');
-  gl.addEventListener('wheel', e => {
+  // колесо мыши прокручивает ленты жанров и настроений по горизонтали
+  for (const gl of [$('#genres'), $('#moodsRow')]) gl.addEventListener('wheel', e => {
     if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || gl.scrollWidth <= gl.clientWidth) return;
     e.preventDefault(); gl.scrollLeft += e.deltaY;
   }, { passive: false });

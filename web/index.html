@@ -53,6 +53,11 @@
 
   <div class="main">
       <div class="dd-scrim" id="ddScrim"></div>
+    <!-- подборки по настроению: лента карточек, по клику каталог показывает только подходящие фильмы -->
+    <section class="moods" id="moods">
+      <div class="moods-h"><h3>Под настроение</h3><span id="moodsHello"></span></div>
+      <div class="moods-box"><div class="moods-row" id="moodsRow"></div></div>
+    </section>
     <div class="toolbar" id="filters">
       <!-- на телефоне фильтры — панель снизу: заголовок, «Сбросить» и «Показать» -->
       <div class="m-sheet-h"><b>Фильтры</b><button class="m-reset" id="mFiltReset">Сбросить</button></div>
@@ -87,6 +92,7 @@
     <div class="sect-head" id="sectHead">
       <h2 id="sectTitle">Каталог</h2>
       <button class="person-chip hidden" id="personChip" title="Показать весь каталог"></button>
+      <button class="person-chip hidden" id="moodChip" title="Сбросить настроение и показать весь каталог"></button>
       <button class="reset-f hidden" id="resetF" title="Сбросить категорию, жанр, годы, страну и IMDb">✕ Сбросить фильтры</button>
       <div class="counter" id="counter"></div>
       <button class="dens-btn" id="densBtn" title="Размер постеров"><svg class="d2" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg><svg class="d3" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="16" y="3.5" width="4.5" height="4.5" rx="1"/><rect x="3.5" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="16" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="3.5" y="16" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="16" width="4.5" height="4.5" rx="1"/><rect x="16" y="16" width="4.5" height="4.5" rx="1"/></svg></button>
