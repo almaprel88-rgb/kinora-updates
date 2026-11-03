@@ -120,7 +120,21 @@ function call(type, data = {}) {
 }
 
 // приложение скачало обновление в фоне — плашка с кнопкой «Перезапустить» (иначе применится при следующем запуске)
+// приложение для Android сообщает, сколько файлов обновления уже скачано
+window.kinoraUpdProgress = (done, total) => {
+  let bar = document.getElementById('updBar');
+  if (bar && !bar.classList.contains('loading')) return;
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'updBar'; bar.className = 'upd-bar loading';
+    document.body.append(bar);
+  }
+  bar.innerHTML = `<span class="upd-ico">⬇</span><span class="upd-t"><b>Загружается обновление</b>${done} из ${total} файлов — можно пользоваться приложением</span>`;
+  if (done >= total) setTimeout(() => bar.classList.contains('loading') && bar.remove(), 1500);
+};
 window.kinoraUpdate = () => {
+  const old = document.getElementById('updBar');
+  if (old && old.classList.contains('loading')) old.remove();
   if (document.getElementById('updBar')) return;
   const bar = document.createElement('div');
   bar.id = 'updBar'; bar.className = 'upd-bar';
