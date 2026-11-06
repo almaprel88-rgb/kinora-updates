@@ -1141,10 +1141,43 @@ function similarHTML(m) {
   const list = similarTo(m);
   if (!list.length) return '';
   return `<div class="similar"><div class="sim-h"><h3>Похожие фильмы</h3><span>по жанрам, режиссёру и актёрам</span></div>
-    <div class="sim-row">${list.map(([, o, why]) => `<button class="sim" data-sim="${esc(o.id)}">
+    <div class="sim-box"><div class="sim-row">${list.map(([, o, why]) => `<button class="sim" data-sim="${esc(o.id)}">
       <div class="sim-p">${posterHTML(o, false)}</div>
       <b>${esc(o.title)}</b><small>${o.year || ''}${o.imdb ? ' · IMDb ' + o.imdb.toFixed(1) : ''}</small><em>${esc(why)}</em>
-    </button>`).join('')}</div></div>`;
+    </button>`).join('')}</div></div></div>`;
+}
+
+// горизонтальная лента без полосы прокрутки: круглые стрелки по краям (видны при наведении,
+// только в ту сторону, куда ещё можно листать) и прокрутка колесом мыши
+function rowNav(row) {
+  if (!row || row._nav) return;
+  row._nav = true;
+  const host = row.parentElement;
+  host.classList.add('nav-host');
+  const mk = (dir, d) => {
+    const b = document.createElement('button');
+    b.className = 'row-arrow ' + dir;
+    b.title = dir === 'prev' ? 'Назад' : 'Дальше';
+    b.innerHTML = `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+    b.onclick = () => row.scrollBy({ left: (dir === 'prev' ? -1 : 1) * row.clientWidth * .8, behavior: calm ? 'auto' : 'smooth' });
+    host.append(b);
+    return b;
+  };
+  const prev = mk('prev', 'm14.5 6-6 6 6 6'), next = mk('next', 'm9.5 6 6 6-6 6');
+  const upd = () => {
+    const max = row.scrollWidth - row.clientWidth - 4;
+    prev.classList.toggle('on', row.scrollLeft > 4);
+    next.classList.toggle('on', row.scrollLeft < max);
+    host.classList.toggle('at-end', row.scrollLeft >= max);
+  };
+  row.addEventListener('scroll', upd, { passive: true });
+  new ResizeObserver(upd).observe(row);
+  new MutationObserver(upd).observe(row, { childList: true });
+  row.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || row.scrollWidth <= row.clientWidth) return;
+    e.preventDefault(); row.scrollLeft += e.deltaY;
+  }, { passive: false });
+  upd();
 }
 
 /* ---------- журнал просмотров и прогресс сериала ---------- */
@@ -1302,6 +1335,7 @@ function openDetail(m, from) {
   $$('[data-person]', detail).forEach(b => b.onclick = () => showPerson(b.dataset.person));
   $$('[data-mood]', detail).forEach(b => b.onclick = () => { closeDetail(); setMood(b.dataset.mood, true); });
   $$('[data-sim]', detail).forEach(b => b.onclick = () => openDetail(S.movies.find(o => o.id === b.dataset.sim)));
+  rowNav($('.sim-row', detail));
   paintWatchLog(m);
 
   updateHeart(m);
@@ -3401,8 +3435,9 @@ async function init() {
   $('#gamesBtn').onclick = () => openGames();
   $('#helpBtn').onclick = startTour;
   $('#themeBtn').onclick = e => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', e);
-  // колесо мыши прокручивает ленты жанров и настроений по горизонтали
-  for (const gl of [$('#genres'), $('#moodsRow')]) gl.addEventListener('wheel', e => {
+  rowNav($('#moodsRow')); rowNav($('#recsRow'));
+  // колесо мыши прокручивает ленту жанров по горизонтали
+  for (const gl of [$('#genres')]) gl.addEventListener('wheel', e => {
     if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || gl.scrollWidth <= gl.clientWidth) return;
     e.preventDefault(); gl.scrollLeft += e.deltaY;
   }, { passive: false });
