@@ -2571,11 +2571,19 @@ function mapPanel(delay, rated) {
   return `<div class="panel span4 map-p" style="animation-delay:${delay}ms">
     <h3>Кино со всего мира <small>${seen} ${plural(seen, 'страна', 'страны', 'стран')} из ${total} в каталоге</small></h3>
     <div class="w-wrap"><svg class="w-map" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="Карта: из каких стран оценённые фильмы">
-      <path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</svg><div class="w-tip"></div></div>
+      <path d="${mapGrid()}" class="w-grid"/><path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</svg><div class="w-tip"></div></div>
     <div class="w-foot"><div class="w-leg">меньше<i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><i data-l="5"></i>больше</div>
       ${next.length ? `<div class="w-next"><span>Куда отправиться дальше:</span>${next.map(([c, n]) => `<button data-country="${esc(c)}" title="${n} ${plural(n, 'фильм', 'фильма', 'фильмов')} с IMDb 7+">${esc(c)}</button>`).join('')}</div>` : ''}</div>
   </div>`;
 }
+
+// пунктирная сетка параллелей и меридианов под картой
+const mapGrid = () => {
+  let d = '';
+  for (let x = 1000 / 12; x < 1000; x += 1000 / 12) d += `M${x.toFixed(1)} 0V${WORLD.h}`;
+  for (let y = WORLD.h / 8; y < WORLD.h; y += WORLD.h / 8) d += `M0 ${y.toFixed(1)}H1000`;
+  return d;
+};
 
 function wireMap(root) {
   const wrap = $('.w-wrap', root);
@@ -2594,7 +2602,7 @@ function wireMap(root) {
     const el = e.target.closest('.w-c');
     if (el) show(el, e); else { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); }
   });
-  wrap.addEventListener('pointerleave', () => tipEl.classList.remove('on'));
+  wrap.addEventListener('pointerleave', () => { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); });
   // на компьютере нажатие сразу открывает фильмы страны; на телефоне первое касание показывает подсказку
   let armed = null;
   wrap.addEventListener('click', e => {

@@ -1824,15 +1824,17 @@ body.cols3 .dens-btn .d3 { display: block; }
 /* ---------- карта «Кино со всего мира» ---------- */
 .map-p { --w0: var(--card3); }
 .w-wrap { position: relative; margin: 0 -8px; }
-.w-map { display: block; width: 100%; height: auto; }
+.w-map { display: block; width: 100%; height: auto; overflow: hidden; stroke-linejoin: round; stroke-linecap: round; }
+.w-grid { fill: none; stroke: var(--line); stroke-width: .6; stroke-dasharray: 2 4; opacity: .7; pointer-events: none; }
 .w-rest { fill: var(--card2); stroke: var(--bg2); stroke-width: .5; }
-.w-c { fill: var(--w0); stroke: var(--bg2); stroke-width: .5; cursor: pointer; transition: fill .3s; }
+.w-c { fill: var(--w0); stroke: var(--bg2); stroke-width: .5; cursor: pointer; transition: fill .3s, opacity .25s; }
+@media (hover: hover) { .w-map:has(.w-c.hov) .w-c:not(.hov):not([data-l="0"]) { opacity: .55; } }
 .w-c[data-l="1"], .w-leg i[data-l="1"] { fill: color-mix(in srgb, var(--accent) 30%, var(--w0)); background: color-mix(in srgb, var(--accent) 30%, var(--w0)); }
 .w-c[data-l="2"], .w-leg i[data-l="2"] { fill: color-mix(in srgb, var(--accent) 48%, var(--w0)); background: color-mix(in srgb, var(--accent) 48%, var(--w0)); }
 .w-c[data-l="3"], .w-leg i[data-l="3"] { fill: color-mix(in srgb, var(--accent) 66%, var(--w0)); background: color-mix(in srgb, var(--accent) 66%, var(--w0)); }
 .w-c[data-l="4"], .w-leg i[data-l="4"] { fill: color-mix(in srgb, var(--accent) 84%, var(--w0)); background: color-mix(in srgb, var(--accent) 84%, var(--w0)); }
 .w-c[data-l="5"], .w-leg i[data-l="5"] { fill: var(--cyan); background: var(--cyan); }
-.w-c.hov { stroke: var(--text); stroke-width: 1.2; }
+.w-c.hov { stroke: var(--text); stroke-width: 1.2; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--cyan) 55%, transparent)); }
 .w-dot { stroke-width: 1.5; }
 .w-tip {
   position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; padding: 8px 12px; border-radius: 10px; white-space: nowrap;
