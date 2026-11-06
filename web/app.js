@@ -24,7 +24,7 @@ const TIERS = [
 TIERS.forEach(t => t.c2 = t.c1);
 const SORTS = [
   ['title', 'По названию'], ['new', 'Сначала новые'], ['old', 'Сначала старые'],
-  ['score', 'По моей оценке'], ['imdb', 'По рейтингу IMDb'], ['recent', 'Недавно оценённые'], ['mood', 'Лучшее под настроение'],
+  ['score', 'По моей оценке'], ['imdb', 'По рейтингу IMDb'], ['recent', 'Недавно оценённые'], ['foryou', 'Подходит мне'], ['mood', 'Лучшее под настроение'],
 ];
 // пороги фильтра IMDb: 0 — любой рейтинг
 const IMDB_MIN = [[0, 'Любой рейтинг'], [8, '8 и выше'], [7.5, '7.5 и выше'], [7, '7 и выше'], [6.5, '6.5 и выше'], [6, '6 и выше']];
@@ -270,6 +270,7 @@ const saveRatings = debounce(async () => {
 function touch(r) {
   r.updated = new Date().toISOString();
   if (overall(r) >= 0) r.ratedAt = r.ratedAt || r.updated; else delete r.ratedAt;
+  tasteCache = null; recsDirty = true;
   saveRatings(); checkAch();
 }
 
@@ -428,6 +429,7 @@ function cardOf(m) {
 
 function replaceCard(m) {
   delete m._hay;
+  featMemo.delete(m);
   const old = cards.get(m.id), el = makeCard(m);
   el.classList.add('in');
   cards.set(m.id, el);
@@ -539,6 +541,7 @@ function matches(m, ignoreTier) {
 const COLL = new Intl.Collator('ru');
 function sorted(list) {
   const byTitle = (a, b) => COLL.compare(a.title, b.title);
+  const fy = S.sort === 'foryou' && forYouMap();
   const f = {
     title: byTitle,
     new: (a, b) => b.year - a.year || byTitle(a, b),
@@ -547,6 +550,7 @@ function sorted(list) {
     imdb: (a, b) => (b.imdb || 0) - (a.imdb || 0) || (b.imdbVotes || 0) - (a.imdbVotes || 0) || byTitle(a, b),
     recent: (a, b) => ((R(b.id) || {}).updated || '').localeCompare((R(a.id) || {}).updated || '') || byTitle(a, b),
     mood: (a, b) => moodFit(b) - moodFit(a) || byTitle(a, b),
+    foryou: (a, b) => fy.get(b) - fy.get(a) || byTitle(a, b),
   }[S.sort];
   return list.sort(f);
 }
@@ -701,6 +705,8 @@ function render() {
   $('#counter').classList.toggle('hidden', noGrid);
   $('#hero').classList.toggle('hidden', S.view !== 'all');
   $('#moods').classList.toggle('hidden', S.view !== 'all');
+  $('#recs').classList.toggle('hidden', S.view !== 'all');
+  if (S.view === 'all' && recsDirty) renderRecs();
   paintMoods();
   $('#stats').classList.toggle('hidden', !stats);
   $('#colls').classList.toggle('hidden', !collList);
@@ -995,7 +1001,8 @@ moreSheet.addEventListener('click', e => {
   if (!b && !e.target.closest('.msheet-scrim')) return;
   moreSheet.classList.remove('open');
   if (!b) return;
-  if (b.dataset.more === 'add') openEditor(null);
+  if (b.dataset.more === 'games') openGames();
+  else if (b.dataset.more === 'add') openEditor(null);
   else if (b.dataset.more === 'theme') setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
   else startTour();
 });
@@ -1320,6 +1327,7 @@ function closeDetail() {
   setAccent(null);
   // в открытой коллекции фильм могли убрать или добавить — сетку обновляем после закрытия, а не во время листания
   if (S.view === 'coll' && curColl()) render();
+  else if (S.view === 'all' && recsDirty) renderRecs();
 }
 
 function step(d) {
@@ -1737,18 +1745,15 @@ function renderStats() {
   html += `<div class="panel span2" style="animation-delay:440ms"><h3>Страны <small>по числу оценок</small></h3>${cl.length
     ? cl.map(x => `<div class="crow" data-country="${esc(x.c)}" title="Показать фильмы: ${esc(x.c)}">${bar(`${x.c} (${x.n})`, x.a, 10, TIERS[tierIdx(x.a)], x.a.toFixed(1))}</div>`).join('')
     : '<div class="nodata">У оценённых фильмов не указана страна</div>'}</div>`;
-  html += monthsPanel(460, 'span2') + timePanel(480);
+  html += monthsPanel(460, 'span2') + timePanel(480) + mapPanel(490, rated);
 
   st.innerHTML = html + achPanel(500) + accentPanel() + backupPanel();
   wireBackup(st);
   countUp(st);
   $$('.trow', st).forEach(rw => rw.onclick = () => { S.list = top.map(x => x.m); openDetail(S.movies.find(m => m.id === rw.dataset.id), $('.th', rw)); });
   wireYear(st);
-  $$('.crow', st).forEach(rw => rw.onclick = () => {
-    Object.assign(S, { country: rw.dataset.country, person: null });
-    syncCountry();
-    $('#tabs button[data-view="all"]').click();
-  });
+  wireMap(st);
+  $$('.crow', st).forEach(rw => rw.onclick = () => goCountry(rw.dataset.country));
   requestAnimationFrame(() => requestAnimationFrame(() => $$('.fil', st).forEach(f => f.style[f.closest('.mo-bar') ? 'height' : 'width'] = f.dataset.w + '%')));
 }
 
@@ -2059,6 +2064,9 @@ const ACH = [
   { id: 'favs', icon: '❤️', name: 'Коллекционер', desc: '{n} фильмов в избранном', lv: [5, 20, 50], v: c => c.rs.filter(r => r.favorite).length },
   { id: 'planner', icon: '🔖', name: 'Планировщик', desc: '{n} фильмов в «Смотреть позже»', lv: [5, 20, 50], v: c => c.rs.filter(r => r.watch).length },
   { id: 'curator', icon: '🗂️', name: 'Куратор', desc: '{n:коллекция,коллекции,коллекций} хотя бы с 3 фильмами', lv: [1, 3, 6], v: () => S.colls.filter(c => c.ids.length >= 3).length },
+  { id: 'world', icon: '🌍', name: 'Кругосветка', desc: 'Фильмы из {n:страны,стран,стран}', lv: [5, 15, 30], v: c => new Set(c.rated.flatMap(m => m.country || [])).size },
+  { id: 'tourney', icon: '🥊', name: 'Главный судья', desc: 'Проведите {n:турнир,турнира,турниров} фильмов', lv: [1, 5, 15], v: () => gstat.tourn },
+  { id: 'eye', icon: '👁️', name: 'Зоркий глаз', desc: 'Угадайте {n:кадр,кадра,кадров} из 10 за одну игру', lv: [5, 8, 10], v: () => gstat.quizRight },
   { id: 'notes', icon: '✍️', name: 'Летописец', desc: 'Заметки к {n} фильмам', lv: [5, 20, 50], v: c => c.rs.filter(r => (r.comment || '').trim()).length },
 ];
 const LV_NAME = ['', 'Бронза', 'Серебро', 'Золото'];
@@ -2209,6 +2217,7 @@ async function importBackup() {
   saveRatings(); saveCustom(); saveColls();
   achSeen = achDone(); keep('kc_ach', achSeen);
   S.movies.forEach(m => { const c = cards.get(m.id); if (c) badges(c, m); });
+  tasteCache = null; recsDirty = true;
   buildGenres(); buildCountry(); buildYears(); renderMoods(); render();
   toast(`✅ Загружено записей: ${entries.length}`);
 }
@@ -2360,6 +2369,540 @@ function spin() {
     };
   });
 }
+
+/* ================= рекомендации «Для вас» ================= */
+// вкус считается по своим оценкам: режиссёры, актёры, жанры, настроения, страны и десятилетия,
+// которые вы оцениваете выше своей средней, поднимают похожие неоценённые фильмы
+const REC_MIN = 5, REC_N = 18;
+// вес признака: режиссёр говорит о вкусе больше, чем жанр или десятилетие
+const FW = { d: 1.2, a: .8, g: .7, m: .6, c: .4, y: .35 };
+// сглаживание: признак, встреченный один-два раза, весит меньше подтверждённого многими оценками
+const FK = { d: 2, a: 2, g: 4, m: 4, c: 4, y: 4 };
+const featMemo = new WeakMap();
+const recHidden = new Set(load('kc_rec_hide', []));
+let tasteCache = null, recsDirty = true;
+
+function featuresOf(m) {
+  let f = featMemo.get(m);
+  if (!f) featMemo.set(m, f = [
+    ...people(m.director).map(p => 'd' + p), ...m.actors.slice(0, 5).map(p => 'a' + p),
+    ...m.genres.map(g => 'g' + g), ...moodsOf(m).map(x => 'm' + x),
+    ...(m.country || []).slice(0, 2).map(c => 'c' + c), ...(m.year ? ['y' + Math.floor(m.year / 10)] : []),
+  ]);
+  return f;
+}
+
+// false — оценок пока мало
+function taste() {
+  if (tasteCache !== null) return tasteCache;
+  const rated = S.movies.map(m => ({ m, s: ov(m) })).filter(x => x.s >= 0);
+  if (rated.length < REC_MIN) return tasteCache = false;
+  const mu = rated.reduce((a, x) => a + x.s, 0) / rated.length, acc = new Map();
+  for (const x of rated) for (const k of featuresOf(x.m)) {
+    const a = acc.get(k) || { sum: 0, n: 0, best: null };
+    a.sum += x.s - mu; a.n++;
+    if (!a.best || x.s > a.best.s) a.best = x;
+    acc.set(k, a);
+  }
+  const w = new Map();
+  acc.forEach((a, k) => w.set(k, { v: a.sum / (a.n + FK[k[0]]), best: a.best }));
+  return tasteCache = { mu, w, n: rated.length };
+}
+
+// признаки одной группы усредняются: у фильма с пятью жанрами нет преимущества перед фильмом с одним
+function recScore(m, t) {
+  const grp = {};
+  let top = null;
+  for (const k of featuresOf(m)) {
+    const g = grp[k[0]] || (grp[k[0]] = [0, 0]), f = t.w.get(k);
+    g[1]++;
+    if (!f) continue;
+    g[0] += f.v;
+    const c = f.v * FW[k[0]];
+    if (c > .05 && f.best.s > t.mu && (!top || c > top.c)) top = { k, c, f };
+  }
+  let s = 0;
+  for (const [k, [sum, n]] of Object.entries(grp)) s += FW[k] * sum / Math.sqrt(n);
+  // из равных по вкусу выше тот, что лучше принят зрителями
+  s += ((m.imdb || 6.3) - 6.8) * .7 + Math.log10((m.imdbVotes || 0) + 10) * .12;
+  return { s, top };
+}
+
+function recWhy(r) {
+  if (!r.top) return 'Высокий рейтинг зрителей';
+  const { k, f } = r.top, v = k.slice(1), b = f.best.m.title;
+  if (k[0] === 'd') return `От режиссёра «${b}»`;
+  if (k[0] === 'a') return `${v}, как в «${b}»`;
+  if (k[0] === 'g') return `Ваш жанр: ${v.toLowerCase()}`;
+  if (k[0] === 'm') return `${MOOD[v].e} ${MOOD[v].name}`;
+  if (k[0] === 'c') return `Вам нравится кино: ${v}`;
+  return `Ваши любимые ${v}0-е`;
+}
+
+// неоценённые и непросмотренные; не больше двух фильмов одного режиссёра — чтобы лента не стала фильмографией
+function recommend(n = REC_N) {
+  const t = taste();
+  if (!t) return [];
+  const list = [];
+  for (const m of S.movies) {
+    const r = R(m.id);
+    if (ov(m) >= 0 || recHidden.has(m.id) || (r && ((r.views || []).length || r.done))) continue;
+    list.push({ m, ...recScore(m, t) });
+  }
+  list.sort((a, b) => b.s - a.s);
+  const out = [], per = {};
+  for (const x of list) {
+    const d = people(x.m.director)[0] || x.m.id;
+    if ((per[d] = (per[d] || 0) + 1) > 2) continue;
+    out.push(x);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+// для сортировки «Подходит мне»: оценённые фильмы уходят в конец
+function forYouMap() {
+  const t = taste(), map = new Map();
+  S.movies.forEach(m => map.set(m, !t ? 0 : ov(m) >= 0 ? -99 : recScore(m, t).s));
+  return map;
+}
+
+function renderRecs() {
+  recsDirty = false;
+  const row = $('#recsRow'), t = taste();
+  $('#recsAll').classList.toggle('hidden', !t);
+  if (!t) {
+    const left = REC_MIN - S.movies.filter(m => ov(m) >= 0).length;
+    $('#recsSub').textContent = '';
+    row.innerHTML = `<div class="rec-intro"><span>🎯</span><p><b>Рекомендации под ваш вкус</b>Оцените ещё ${left} ${plural(left, 'фильм', 'фильма', 'фильмов')} — и Kinora начнёт подбирать кино по вашим оценкам: любимым режиссёрам, актёрам, жанрам и настроениям</p></div>`;
+    return;
+  }
+  const list = recommend();
+  $('#recsSub').textContent = `Подобрано по ${t.n} ${plural(t.n, 'вашей оценке', 'вашим оценкам', 'вашим оценкам')}`;
+  row.innerHTML = list.map((x, i) => `<div class="sim rec" data-rec="${esc(x.m.id)}" style="animation-delay:${i * 30}ms" role="button" tabindex="0">
+      <button class="rec-x" title="Не предлагать этот фильм">✕</button>
+      <div class="sim-p">${posterHTML(x.m, false)}</div>
+      <b>${esc(x.m.title)}</b><small>${x.m.year || ''}${x.m.imdb ? ' · IMDb ' + x.m.imdb.toFixed(1) : ''}</small><em>${esc(recWhy(x))}</em>
+    </div>`).join('') || '<div class="rec-intro"><span>🎬</span><p><b>Вы посмотрели всё, что мы могли предложить</b>Верните скрытые фильмы кнопкой «Все рекомендации»</p></div>';
+  const films = list.map(x => x.m);
+  $$('.rec', row).forEach(el => {
+    const m = S.movies.find(x => x.id === el.dataset.rec);
+    el.onclick = e => {
+      if (e.target.closest('.rec-x')) {
+        recHidden.add(m.id); keep('kc_rec_hide', [...recHidden]);
+        el.classList.add('gone');
+        setTimeout(renderRecs, calm ? 0 : 260);
+        return;
+      }
+      S.list = films;
+      openDetail(m, $('.poster', el));
+    };
+  });
+}
+
+// весь каталог по степени совпадения со вкусом; скрытые из ленты фильмы здесь снова видны
+$('#recsAll').onclick = () => {
+  if (recHidden.size) { recHidden.clear(); keep('kc_rec_hide', []); renderRecs(); }
+  if (S.mood) { S.mood = null; paintMoods(); }
+  S.sort = 'foryou';
+  keep('kc_sort', S.sort);
+  buildSort();
+  render();
+  requestAnimationFrame(() => $('#sectHead').scrollIntoView({ behavior: calm ? 'auto' : 'smooth' }));
+};
+
+/* ================= карта «Кино со всего мира» ================= */
+// страны из базы, которых нет на карте отдельно: СССР показывается на месте России, ФРГ — Германии
+const MAP_AS = { 'СССР': 'Россия', 'ФРГ': 'Германия' };
+
+function mapPanel(delay, rated) {
+  if (typeof WORLD === 'undefined') return '';
+  const by = {}, own = {};
+  rated.forEach(x => new Set((x.m.country || []).map(c => MAP_AS[c] || c)).forEach(c => (by[c] = by[c] || []).push(x.s)));
+  rated.forEach(x => (x.m.country || []).forEach(c => own[c] = 1));
+  const keys = Object.keys(by).filter(c => WORLD.c[c] || WORLD.dots[c]), max = Math.max(1, ...keys.map(c => by[c].length));
+  const lvl = n => n ? Math.max(1, Math.ceil(Math.log(n + 1) / Math.log(max + 1) * 5)) : 0;
+  const tip = c => {
+    const v = by[c] || [], a = v.length ? v.reduce((p, q) => p + q, 0) / v.length : 0;
+    return `${c === 'Россия' && own['СССР'] ? 'Россия и СССР' : c === 'Германия' && own['ФРГ'] ? 'Германия и ФРГ' : c}|${v.length ? `${v.length} ${plural(v.length, 'фильм', 'фильма', 'фильмов')} · средняя ${a.toFixed(1)}` : 'Пока ничего не оценено'}`;
+  };
+  const shapes = Object.entries(WORLD.c).map(([c, d]) => `<path d="${d}" class="w-c" data-l="${lvl((by[c] || []).length)}" data-c="${esc(c)}" data-tip="${esc(tip(c))}"/>`).join('');
+  const dots = Object.entries(WORLD.dots).map(([c, [x, y]]) => `<circle cx="${x}" cy="${y}" r="${by[c] ? 5 : 3}" class="w-c w-dot" data-l="${lvl((by[c] || []).length)}" data-c="${esc(c)}" data-tip="${esc(tip(c))}"/>`).join('');
+  // куда «съездить» дальше: страны с хорошим кино в каталоге, из которых вы ещё ничего не оценили
+  const cat = {};
+  S.movies.forEach(m => (m.country || []).slice(0, 1).forEach(c => { if (!by[MAP_AS[c] || c] && m.imdb >= 7) cat[c] = (cat[c] || 0) + 1; }));
+  const next = Object.entries(cat).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const total = new Set(S.movies.flatMap(m => m.country || [])).size;
+  const seen = Object.keys(own).length;
+  return `<div class="panel span4 map-p" style="animation-delay:${delay}ms">
+    <h3>Кино со всего мира <small>${seen} ${plural(seen, 'страна', 'страны', 'стран')} из ${total} в каталоге</small></h3>
+    <div class="w-wrap"><svg class="w-map" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="Карта: из каких стран оценённые фильмы">
+      <path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</svg><div class="w-tip"></div></div>
+    <div class="w-foot"><div class="w-leg">меньше<i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><i data-l="5"></i>больше</div>
+      ${next.length ? `<div class="w-next"><span>Куда отправиться дальше:</span>${next.map(([c, n]) => `<button data-country="${esc(c)}" title="${n} ${plural(n, 'фильм', 'фильма', 'фильмов')} с IMDb 7+">${esc(c)}</button>`).join('')}</div>` : ''}</div>
+  </div>`;
+}
+
+function wireMap(root) {
+  const wrap = $('.w-wrap', root);
+  if (!wrap) return;
+  const tipEl = $('.w-tip', wrap);
+  const show = (el, e) => {
+    const [name, sub] = el.dataset.tip.split('|'), r = wrap.getBoundingClientRect();
+    tipEl.innerHTML = `<b>${esc(name)}</b>${esc(sub)}`;
+    const x = Math.min(Math.max(e.clientX - r.left, 80), r.width - 80);
+    tipEl.style.transform = `translate(${x}px, ${e.clientY - r.top}px)`;
+    tipEl.classList.add('on');
+    $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov'));
+    el.classList.add('hov');
+  };
+  wrap.addEventListener('pointermove', e => {
+    const el = e.target.closest('.w-c');
+    if (el) show(el, e); else { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); }
+  });
+  wrap.addEventListener('pointerleave', () => tipEl.classList.remove('on'));
+  // на компьютере нажатие сразу открывает фильмы страны; на телефоне первое касание показывает подсказку
+  let armed = null;
+  wrap.addEventListener('click', e => {
+    const el = e.target.closest('.w-c');
+    if (!el) return;
+    if (e.pointerType === 'touch' || matchMedia('(hover: none)').matches) {
+      if (armed !== el) { armed = el; show(el, e); return; }
+    }
+    goCountry(el.dataset.c);
+  });
+  $$('.w-next [data-country]', root).forEach(b => b.onclick = () => goCountry(b.dataset.country));
+}
+
+function goCountry(c) {
+  Object.assign(S, { country: c, person: null });
+  syncCountry();
+  $('#tabs button[data-view="all"]').click();
+}
+
+/* ================= игры: турнир фильмов и «Угадай кадр» ================= */
+const gamesM = $('#games');
+// счётчики игр для достижений
+const gstat = { tourn: 0, quiz: 0, quizBest: 0, quizRight: 0, ...load('kc_games', {}) };
+const saveG = () => keep('kc_games', gstat);
+// прошлые турниры: ids — от чемпиона к тем, кто выбыл раньше всех
+let tourHist = load('kc_tourn', []);
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const gBody = () => $('.g-body', gamesM);
+const byId = id => S.movies.find(m => m.id === id);
+
+function openGames(start) {
+  gameStop();
+  gamesM.innerHTML = `<div class="backdrop"></div><div class="sheet roul games"><button class="x" title="Закрыть (Esc)">✕</button><div class="g-body"></div></div>`;
+  $('.x', gamesM).onclick = $('.backdrop', gamesM).onclick = closeGames;
+  gamesM.classList.add('open');
+  if (start === 'tourn') tournSetup(); else if (start === 'quiz') quizSetup(); else gamesHub();
+}
+function closeGames() { gameStop(); gamesM.classList.remove('open'); }
+// из итогов игры — сразу в окно фильма
+function gameOpenFilm(m) { closeGames(); S.list = [m]; openDetail(m); }
+
+function gamesHub() {
+  gameStop();
+  const champs = tourHist.map(t => byId(t.ids[0])).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i).slice(0, 8);
+  gBody().innerHTML = `<h2>Игры</h2><div class="r-sub">Выберите, во что сыграть</div>
+    <div class="g-hub">
+      <button class="g-card" data-g="tourn" style="--c1:#ffb36b;--c2:#ff6f91"><span class="g-e">🏆</span><b>Турнир фильмов</b>
+        <span>Фильмы сходятся парами — выбирайте, какой лучше, пока не останется один чемпион</span>
+        <small>${gstat.tourn ? `Проведено турниров: ${gstat.tourn}` : 'Ещё не играли'}</small></button>
+      <button class="g-card" data-g="quiz" style="--c1:#4fd8ff;--c2:#9d7bff"><span class="g-e">🎞️</span><b>Угадай кадр</b>
+        <span>${Q_N} кадров из известных фильмов — узнайте фильм, пока не кончилось время</span>
+        <small>${gstat.quiz ? `Рекорд: ${gstat.quizBest} ${plural(gstat.quizBest, 'очко', 'очка', 'очков')}` : 'Ещё не играли'}</small></button>
+    </div>
+    ${champs.length ? `<div class="g-champs"><h4>Прошлые чемпионы</h4><div class="g-ch-row">${champs.map(m => `<button data-id="${esc(m.id)}" title="${esc(m.title)}">${posterHTML(m, false)}</button>`).join('')}</div></div>` : ''}`;
+  $$('[data-g]', gBody()).forEach(b => b.onclick = () => b.dataset.g === 'tourn' ? tournSetup() : quizSetup());
+  $$('.g-ch-row [data-id]', gBody()).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
+}
+
+let tn = null, qz = null;
+function gameStop() {
+  tn = null;
+  if (qz) clearTimeout(qz.timer);
+  qz = null;
+}
+
+/* ---------- турнир ---------- */
+const T_SIZES = [8, 16, 32];
+let tSrc = 'top', tSize = 16;
+
+function tournSources() {
+  const rated = S.movies.filter(m => ov(m) >= 0).sort((a, b) => ov(b) - ov(a));
+  const list = [
+    { k: 'top', name: '⭐ Мои лучшие', sub: 'Самые высокие ваши оценки', ord: true, pool: () => rated },
+    { k: 'fav', name: '❤️ Избранное', sub: 'Какой любимый фильм — самый любимый', ord: true, pool: () => rated.filter(m => R(m.id).favorite).concat(S.movies.filter(m => ov(m) < 0 && R(m.id) && R(m.id).favorite)) },
+    { k: 'watch', name: '🔖 Смотреть позже', sub: 'Решите, что смотреть первым', pool: () => S.movies.filter(m => R(m.id) && R(m.id).watch) },
+    { k: 'rec', name: '🎯 Для вас', sub: 'Рекомендации по вашему вкусу', ord: true, pool: () => recommend(32).map(x => x.m) },
+    { k: 'imdb', name: '🥇 Шедевры IMDb', sub: 'Случайные фильмы из золотого фонда', pool: () => S.movies.filter(m => !isSeries(m) && m.imdb >= 7.8 && m.imdbVotes >= 250000) },
+    ...S.colls.filter(c => c.ids.length >= 8).map(c => ({ k: 'coll:' + c.id, name: '🗂️ ' + c.name, sub: 'Ваша коллекция', pool: () => c.ids.map(byId).filter(Boolean) })),
+  ];
+  list.forEach(s => s.n = s.pool().length);
+  return list;
+}
+
+function tournSetup() {
+  gameStop();
+  const srcs = tournSources();
+  if (!srcs.some(s => s.k === tSrc && s.n >= 8)) tSrc = (srcs.find(s => s.n >= 8) || srcs[0]).k;
+  const paint = () => {
+    const s = srcs.find(x => x.k === tSrc);
+    $$('.t-src button', gBody()).forEach(b => b.classList.toggle('on', b.dataset.k === tSrc));
+    const ok = T_SIZES.filter(n => n <= s.n);
+    if (ok.length && !ok.includes(tSize)) tSize = ok[ok.length - 1];
+    $$('.t-size button', gBody()).forEach(b => { b.disabled = +b.dataset.n > s.n; b.classList.toggle('on', +b.dataset.n === tSize); });
+    $('[data-start]', gBody()).disabled = s.n < 8;
+  };
+  gBody().innerHTML = `<h2>Турнир фильмов</h2><div class="r-sub">Из каких фильмов собрать сетку? Для турнира нужно хотя бы 8 фильмов</div>
+    <div class="t-src">${srcs.map(s => `<button data-k="${esc(s.k)}" ${s.n < 8 ? 'disabled' : ''}><b>${esc(s.name)}</b><span>${s.n < 8 ? `Пока ${s.n} — нужно 8` : esc(s.sub)}</span></button>`).join('')}</div>
+    <div class="t-size-row"><span>Участников</span><div class="seg t-size">${T_SIZES.map(n => `<button data-n="${n}">${n}</button>`).join('')}</div></div>
+    <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn accent" data-start>Начать турнир</button></div>`;
+  $$('.t-src button', gBody()).forEach(b => b.onclick = () => { tSrc = b.dataset.k; paint(); });
+  $$('.t-size button', gBody()).forEach(b => b.onclick = () => { tSize = +b.dataset.n; paint(); });
+  $('[data-back]', gBody()).onclick = gamesHub;
+  $('[data-start]', gBody()).onclick = () => {
+    const s = srcs.find(x => x.k === tSrc), pool = s.pool();
+    // в списках «по порядку» берутся лучшие, в остальных — случайные; пары всегда случайные
+    const pick = shuffle((s.ord ? pool.slice(0, tSize) : shuffle([...pool]).slice(0, tSize)));
+    tn = { name: s.name.replace(/^\S+\s/, ''), size: pick.length, round: pick, next: [], i: 0, hist: [], out: [] };
+    tournMatch();
+  };
+  paint();
+}
+
+const roundName = n => n === 2 ? 'Финал' : n === 4 ? 'Полуфинал' : n === 8 ? 'Четвертьфинал' : `1/${n / 2} финала`;
+
+function tournMatch() {
+  const n = tn.round.length, a = tn.round[tn.i], b = tn.round[tn.i + 1], played = tn.hist.length;
+  const side = (m, k) => {
+    const s = ov(m), sub = [m.year, s >= 0 ? 'ваша оценка ' + fmt(s) : m.imdb ? 'IMDb ' + m.imdb.toFixed(1) : ''].filter(Boolean).join(' · ');
+    return `<button class="t-side" data-w="${k}"><div class="t-p">${posterHTML(m, false)}</div><b>${esc(m.title)}</b><small>${esc(sub)}</small></button>`;
+  };
+  gBody().innerHTML = `<div class="t-top"><button class="btn sm ghost" data-quit>← Выйти</button>
+      <div class="t-rn"><b>${roundName(n)}</b><span>${n > 2 ? `Матч ${tn.i / 2 + 1} из ${n / 2}` : 'Решающий выбор'}</span></div>
+      <button class="btn sm ghost" data-undo ${played ? '' : 'disabled'} title="Переиграть прошлый матч">↶ Назад</button></div>
+    <div class="t-prog"><i style="width:${played / (tn.size - 1) * 100}%"></i></div>
+    <div class="t-duel">${side(a, 0)}<div class="t-vs">VS</div>${side(b, 1)}</div>
+    <div class="t-hint">Нажмите на фильм, который нравится больше${matchMedia('(hover: hover)').matches ? ' · или стрелки ← →' : ''}</div>`;
+  $$('.t-side', gBody()).forEach(el => el.onclick = () => tournPick(+el.dataset.w));
+  $('[data-quit]', gBody()).onclick = () => { if (!played || confirm('Выйти из турнира? Результат не сохранится.')) tournSetup(); };
+  $('[data-undo]', gBody()).onclick = tournUndo;
+}
+
+function tournPick(k) {
+  if (!tn || tn.lock) return;
+  tn.lock = true;
+  const t = tn, win = t.round[t.i + k], lose = t.round[t.i + 1 - k];
+  t.hist.push({ round: t.round, next: [...t.next], i: t.i, out: t.out.length });
+  $$('.t-side', gBody()).forEach(el => el.classList.add(+el.dataset.w === k ? 'win' : 'lose'));
+  setTimeout(() => {
+    if (tn !== t) return;
+    t.next.push(win); t.out.push(lose); t.i += 2;
+    if (t.i >= t.round.length) {
+      if (t.next.length === 1) return tournEnd();
+      t.round = t.next; t.next = []; t.i = 0;
+    }
+    t.lock = false;
+    tournMatch();
+  }, calm ? 80 : 520);
+}
+
+function tournUndo() {
+  if (!tn || tn.lock || !tn.hist.length) return;
+  const h = tn.hist.pop();
+  Object.assign(tn, { round: h.round, next: h.next, i: h.i });
+  tn.out.length = h.out;
+  tournMatch();
+}
+
+function tournEnd() {
+  const t = tn, champ = t.next[0], rank = [champ, ...[...t.out].reverse()];
+  gstat.tourn++; saveG();
+  tourHist.unshift({ at: new Date().toISOString(), name: t.name, size: t.size, ids: rank.map(m => m.id) });
+  tourHist = tourHist.slice(0, 20); keep('kc_tourn', tourHist);
+  checkAch();
+  const mini = (m, label) => `<button class="t-mini" data-id="${esc(m.id)}"><div class="t-mp">${posterHTML(m, false)}</div><em>${label}</em><b>${esc(m.title)}</b></button>`;
+  const r = R(champ.id), watching = !!(r && r.watch);
+  gBody().innerHTML = `<div class="t-end">
+      <div class="t-crown">🏆</div><small class="t-eyebrow">Чемпион турнира «${esc(t.name)}» · ${t.size} ${plural(t.size, 'фильм', 'фильма', 'фильмов')}</small>
+      <button class="t-champ" data-id="${esc(champ.id)}">${posterHTML(champ, false)}</button>
+      <div class="r-title">${esc(champ.title)}</div>
+      <div class="r-meta">${[champ.year, ...champ.genres.slice(0, 2), champ.director && 'реж. ' + champ.director].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="t-podium">${mini(rank[1], '🥈 Финалист')}${rank.slice(2, 4).map(m => mini(m, '🥉 Полуфинал')).join('')}</div>
+      <div class="r-acts"><button class="btn accent" data-open>Открыть фильм</button>
+        ${ov(champ) < 0 ? `<button class="btn" data-watch>${watching ? '✓ В «Смотреть позже»' : '🔖 Смотреть позже'}</button>` : ''}
+        <button class="btn" data-coll>🗂️ Сохранить как коллекцию</button></div>
+      <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn" data-again>🔁 Ещё турнир</button></div>
+    </div>`;
+  const body = gBody();
+  $$('[data-id]', body).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
+  $('[data-open]', body).onclick = () => gameOpenFilm(champ);
+  const w = $('[data-watch]', body);
+  if (w) w.onclick = () => { toggleWatch(champ); w.textContent = R(champ.id) && R(champ.id).watch ? '✓ В «Смотреть позже»' : '🔖 Смотреть позже'; };
+  $('[data-coll]', body).onclick = e => {
+    const d = new Date().toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+    newColl(`Турнир: ${t.name}`, `Итог турнира ${d}: от победителя к тем, кто выбыл первым`, rank.map(m => m.id));
+    e.currentTarget.disabled = true; e.currentTarget.textContent = '✓ Коллекция сохранена';
+    toast('🗂️ Коллекция «Турнир: ' + t.name + '» сохранена');
+  };
+  $('[data-again]', body).onclick = tournSetup;
+  $('[data-back]', body).onclick = gamesHub;
+  tn = null;
+}
+
+/* ---------- «Угадай кадр» ---------- */
+// кадры лежат в папке frames; если на устройстве их нет — загружаются с сервера обновлений
+const Q_N = 10, Q_SEC = 20;
+const Q_SRC = [['all', 'Все фильмы'], ['foreign', 'Зарубежные'], ['ours', 'Наши'], ['mine', 'Оценённые мной']];
+let qSrc = 'all';
+const ours = m => isRussian(m) || isSoviet(m);
+const frameSrc = m => '../frames/' + encodeURIComponent(m.id) + '.jpg';
+async function loadFrame(m) {
+  const img = await loadAnyImg(frameSrc(m));
+  if (img || !remoteBase) return img;
+  return loadAnyImg(remoteBase + 'frames/' + encodeURIComponent(m.id) + '.jpg');
+}
+// миниатюры кадров (data-fr): фон ставится, когда стало понятно, откуда кадр загрузился
+const paintFrames = root => $$('[data-fr]', root).forEach(el => loadFrame(byId(el.dataset.fr)).then(img => { if (img) el.style.backgroundImage = `url('${img.src}')`; }));
+const quizPool = k => S.movies.filter(m => m.frame && (k === 'all' || (k === 'ours' ? ours(m) : k === 'foreign' ? !ours(m) : ov(m) >= 0)));
+
+function quizSetup() {
+  gameStop();
+  if (!Q_SRC.some(([k]) => k === qSrc && quizPool(k).length >= Q_N)) qSrc = 'all';
+  gBody().innerHTML = `<h2>Угадай кадр</h2><div class="r-sub">${Q_N} кадров, на каждый — ${Q_SEC} секунд и четыре варианта ответа. Чем быстрее ответ, тем больше очков.
+      Подсказка «50/50» убирает два неверных варианта, но делит очки пополам.${gstat.quiz ? `<br>Ваш рекорд: <b>${gstat.quizBest} ${plural(gstat.quizBest, 'очко', 'очка', 'очков')}</b>` : ''}</div>
+    <div class="seg q-src">${Q_SRC.map(([k, n]) => { const c = quizPool(k).length; return `<button data-k="${k}" class="${k === qSrc ? 'on' : ''}" ${c < Q_N ? 'disabled title="Мало кадров в этой подборке"' : ''}>${n}</button>`; }).join('')}</div>
+    <div class="q-intro">${shuffle(quizPool('all')).slice(0, 3).map(m => `<div class="q-ip" data-fr="${esc(m.id)}"></div>`).join('')}</div>
+    <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn accent" data-start>▶ Начать</button></div>`;
+  $$('.q-src button', gBody()).forEach(b => b.onclick = () => { qSrc = b.dataset.k; $$('.q-src button', gBody()).forEach(x => x.classList.toggle('on', x === b)); });
+  $('[data-back]', gBody()).onclick = gamesHub;
+  $('[data-start]', gBody()).onclick = quizStart;
+  paintFrames(gBody());
+}
+
+// варианты-обманки: того же происхождения (наше / зарубежное), известные, похожего жанра и времени
+function quizOptions(m) {
+  const g = new Set(m.genres.filter(x => x !== 'Драма')), o = ours(m), w0 = norm(m.title).split(/[\s:,.-]+/)[0];
+  // к мультфильму — только мультфильмы, к игровому кино — только игровое
+  const cart = x => x.genres.includes('Мультфильм'), mc = cart(m);
+  const cand = S.movies.filter(x => x !== m && !isSeries(x) && ours(x) === o && cart(x) === mc && (x.imdbVotes || 0) >= (o ? 3000 : 60000)
+    && x.title !== m.title && norm(x.title).split(/[\s:,.-]+/)[0] !== w0);
+  const near = cand.filter(x => x.genres.some(y => g.has(y)) && Math.abs((x.year || 0) - (m.year || 0)) <= 15);
+  const from = shuffle(near.length >= 3 ? near : cand);
+  const picked = [];
+  for (const x of from) { if (picked.length >= 3) break; if (!picked.some(p => p.title === x.title)) picked.push(x); }
+  return shuffle([m, ...picked]);
+}
+
+function quizStart() {
+  const pool = shuffle(quizPool(qSrc));
+  qz = { pool, i: -1, score: 0, right: 0, res: [], pre: null };
+  quizNext();
+}
+
+async function quizNext() {
+  const z = qz;
+  if (!z) return;
+  z.i++;
+  if (z.i >= Q_N) return quizEnd();
+  gBody().innerHTML = `<div class="q-top"><span class="q-n">Кадр ${z.i + 1} из ${Q_N}</span><span class="q-sc">${z.score} ${plural(z.score, 'очко', 'очка', 'очков')}</span></div>
+    <div class="q-frame loading"></div>`;
+  let m = null, img = null;
+  while (z.pool.length && !img) {
+    m = z.pool.pop();
+    img = await (z.pre && z.pre.m === m ? z.pre.p : loadFrame(m));
+    if (qz !== z) return;
+  }
+  if (!img) {
+    gBody().innerHTML = `<h2>Угадай кадр</h2><div class="r-empty q-err">Не удалось загрузить кадры. Проверьте подключение к интернету и попробуйте ещё раз.</div>
+      <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button></div>`;
+    $('[data-back]', gBody()).onclick = gamesHub;
+    qz = null;
+    return;
+  }
+  // следующий кадр загружается, пока вы думаете над этим
+  const nx = z.pool[z.pool.length - 1];
+  z.pre = nx ? { m: nx, p: loadFrame(nx) } : null;
+  const opts = quizOptions(m);
+  Object.assign(z, { m, opts, hint: false, done: false, t0: performance.now() });
+  gBody().innerHTML = `<div class="q-top"><span class="q-n">Кадр ${z.i + 1} из ${Q_N}</span><span class="q-sc">${z.score} ${plural(z.score, 'очко', 'очка', 'очков')}</span></div>
+    <div class="q-frame"><img src="${img.src}" alt="Кадр из фильма"></div>
+    <div class="q-time"><i style="animation-duration:${calm ? 0.001 : Q_SEC}s"></i></div>
+    <div class="q-opts">${opts.map((o, k) => `<button class="q-opt" data-k="${k}"><em>${k + 1}</em><span>${esc(o.title)}<small>${o.year || ''}</small></span></button>`).join('')}</div>
+    <div class="q-foot"><button class="btn sm ghost" data-hint>💡 50/50</button><div class="q-res"></div><button class="btn sm accent hidden" data-next>${z.i + 1 < Q_N ? 'Дальше →' : 'Итоги →'}</button></div>`;
+  const body = gBody();
+  if (calm) $('.q-time i', body).style.animation = 'none';
+  $$('.q-opt', body).forEach(b => b.onclick = () => quizAnswer(+b.dataset.k));
+  $('[data-hint]', body).onclick = e => {
+    if (z.done || z.hint) return;
+    z.hint = true; e.currentTarget.disabled = true;
+    const wrong = shuffle($$('.q-opt', body).filter(b => opts[+b.dataset.k] !== m)).slice(0, 2);
+    wrong.forEach(b => { b.disabled = true; b.classList.add('off'); });
+  };
+  $('[data-next]', body).onclick = quizNext;
+  z.timer = setTimeout(() => quizAnswer(-1), Q_SEC * 1000);
+}
+
+function quizAnswer(k) {
+  const z = qz;
+  if (!z || z.done) return;
+  z.done = true;
+  clearTimeout(z.timer);
+  const body = gBody(), left = Math.max(0, Q_SEC - (performance.now() - z.t0) / 1000);
+  const ok = k >= 0 && z.opts[k] === z.m;
+  const pts = ok ? Math.round((50 + 50 * left / Q_SEC) * (z.hint ? .5 : 1)) : 0;
+  z.score += pts; z.right += ok;
+  z.res.push({ m: z.m, ok, pts });
+  $('.q-time', body).classList.add('stop');
+  $$('.q-opt', body).forEach(b => {
+    const o = z.opts[+b.dataset.k];
+    b.disabled = true;
+    b.classList.toggle('right', o === z.m);
+    b.classList.toggle('wrong', +b.dataset.k === k && !ok);
+  });
+  $('[data-hint]', body).disabled = true;
+  $('.q-sc', body).textContent = `${z.score} ${plural(z.score, 'очко', 'очка', 'очков')}`;
+  $('.q-res', body).innerHTML = ok ? `<b class="ok">✓ Верно! +${pts}</b>` : `<b class="bad">${k < 0 ? '⏱ Время вышло' : '✗ Мимо'}</b><span>Это «${esc(z.m.title)}»${z.m.year ? ', ' + z.m.year : ''}</span>`;
+  $('[data-next]', body).classList.remove('hidden');
+  $('[data-next]', body).focus({ preventScroll: true });
+}
+
+function quizEnd() {
+  const z = qz;
+  const best = z.score > gstat.quizBest && gstat.quiz > 0;
+  gstat.quiz++;
+  gstat.quizBest = Math.max(gstat.quizBest, z.score);
+  gstat.quizRight = Math.max(gstat.quizRight, z.right);
+  saveG(); checkAch();
+  const verdict = z.right === Q_N ? 'Ходячая энциклопедия кино!' : z.right >= 8 ? 'Настоящий киноман' : z.right >= 6 ? 'Отличная насмотренность'
+    : z.right >= 4 ? 'Неплохо для начала' : 'Есть что посмотреть — и это прекрасно';
+  gBody().innerHTML = `<div class="q-end">
+      <div class="t-crown">${z.right >= 8 ? '🏅' : z.right >= 5 ? '🎬' : '🍿'}</div>
+      <small class="t-eyebrow">${best ? '🎉 Новый рекорд!' : `Рекорд: ${gstat.quizBest}`}</small>
+      <div class="q-big"><b class="v">${z.score}</b><em>${plural(z.score, 'очко', 'очка', 'очков')}</em></div>
+      <div class="r-meta">Угадано ${z.right} из ${Q_N} · ${verdict}</div>
+      <div class="q-list">${z.res.map(x => `<button class="q-li ${x.ok ? 'ok' : 'bad'}" data-id="${esc(x.m.id)}">
+        <div class="q-lf" data-fr="${esc(x.m.id)}"></div>
+        <span><b>${esc(x.m.title)}</b><small>${x.m.year || ''}</small></span><i>${x.ok ? '+' + x.pts : '✗'}</i></button>`).join('')}</div>
+      <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn accent" data-again>🔁 Ещё раз</button></div>
+    </div>`;
+  const body = gBody();
+  paintFrames(body);
+  $$('.q-li', body).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
+  $('[data-again]', body).onclick = quizStart;
+  $('[data-back]', body).onclick = gamesHub;
+  qz = null;
+}
+
+document.addEventListener('keydown', e => {
+  if (!gamesM.classList.contains('open') || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'Escape') { closeGames(); return; }
+  if (tn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); tournPick(e.key === 'ArrowLeft' ? 0 : 1); }
+  if (qz && !qz.done && /^[1-4]$/.test(e.key)) { const b = $(`.q-opt[data-k="${+e.key - 1}"]`, gamesM); if (b && !b.disabled) quizAnswer(+e.key - 1); }
+});
 
 /* ================= карточка-картинка ================= */
 const shareM = $('#share');
@@ -2710,7 +3253,7 @@ window.addEventListener('scroll', placeTour, { passive: true });
 // каждое открытое окно — шаг в истории браузера: «Назад» на Android закрывает окно, а не всё приложение
 function setupBackButton() {
   const closers = new Map([
-    [detail, () => closeDetail()], [roul, () => closeRoulette()],
+    [detail, () => closeDetail()], [roul, () => closeRoulette()], [gamesM, () => closeGames()],
     [editor, () => editor.classList.remove('open')], [shareM, () => shareM.classList.remove('open')],
     [tourEl, () => endTour()],
     [$('#yearM'), () => closeYear()],
@@ -2855,6 +3398,7 @@ async function init() {
   window.addEventListener('scroll', () => up.classList.toggle('on', window.scrollY > 1600), { passive: true });
   up.onclick = () => window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
   $('#rouletteBtn').onclick = openRoulette;
+  $('#gamesBtn').onclick = () => openGames();
   $('#helpBtn').onclick = startTour;
   $('#themeBtn').onclick = e => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', e);
   // колесо мыши прокручивает ленты жанров и настроений по горизонтали
@@ -2900,6 +3444,7 @@ async function init() {
   if (h.get('view')) { const b = $(`#tabs button[data-view="${h.get('view')}"]`); if (b) b.click(); }
   if (h.get('coll') && S.colls.some(c => c.id === h.get('coll'))) { S.coll = h.get('coll'); render(); }
   if (h.get('open')) openDetail(S.movies.find(m => m.id === h.get('open')));
+  if (h.get('games')) openGames(h.get('games'));
   if (h.get('year')) { openYear(h.get('year'), +h.get('slide') || 0); if (h.get('hold')) ysPause(true); }
 
   // первый запуск: плашка с предложением экскурсии; потом её можно вызвать кнопкой «?»
