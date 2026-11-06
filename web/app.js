@@ -306,7 +306,8 @@ let remoteBase = null;
 const remoteIds = new Set(load('kc_remote', []));
 const remoteUrl = id => remoteBase + 'posters/' + encodeURIComponent(id) + '.jpg';
 const keepRemote = debounce(() => keep('kc_remote', [...remoteIds]), 1500);
-const isRemote = m => !!remoteBase && remoteIds.has(m.id) && !localPosters[m.id];
+// свои фильмы на сервере обновлений не лежат — их постер всегда только на устройстве
+const isRemote = m => !!remoteBase && !m.custom && remoteIds.has(m.id) && !localPosters[m.id];
 const purl = m => isRemote(m) ? remoteUrl(m.id) : localPosters[m.id] || '../posters/' + encodeURIComponent(m.id) + '.jpg' + (pver[m.id] ? '?v=' + pver[m.id] : '');
 const hsl = (c, dh = 0, dl = 0) => `hsl(${(c[0] + dh + 360) % 360} ${c[1]}% ${Math.min(80, c[2] + dl)}%)`;
 const keepColors = debounce(() => keep('kc_colors', colors), 800);
@@ -371,6 +372,8 @@ document.addEventListener('error', e => {
     img.src = remoteUrl(id);
     return;
   }
+  // и на сервере нет — забываем, чтобы постер, поставленный позже, снова брался с устройства
+  if (id && remoteIds.delete(id)) keepRemote();
   img.remove();
 }, true);
 
@@ -520,6 +523,7 @@ function matches(m, ignoreTier) {
   const r = R(m.id), s = overall(r);
   if (S.view === 'fav' && !(r && r.favorite)) return false;
   if (S.view === 'watch' && !(r && r.watch)) return false;
+  if (S.view === 'mine' && !m.custom) return false;
   if (S.view === 'coll') { const c = curColl(); if (!c || !c.ids.includes(m.id)) return false; }
   if (!inYears(m)) return false;
   if (!imdbOk(m)) return false;
@@ -681,7 +685,7 @@ function showHero(i) {
   }, 10000);
 }
 
-const VIEW_TITLES = { all: 'Каталог', fav: 'Избранное', watch: 'Смотреть позже', coll: 'Коллекции', stats: 'Статистика' };
+const VIEW_TITLES = { all: 'Каталог', fav: 'Избранное', watch: 'Смотреть позже', mine: 'Мои находки', coll: 'Коллекции', stats: 'Статистика' };
 
 // фильм без года проходит только при полном диапазоне
 const yearsAll = () => S.y1 <= S.yMin && S.y2 >= S.yMax;
@@ -726,6 +730,7 @@ function render() {
   const [eT, eS] = coll && !coll.ids.length ? ['В коллекции пока пусто', 'Откройте любой фильм и нажмите «В коллекцию»']
     : bare && S.view === 'fav' ? ['В избранном пока пусто', 'Откройте фильм и нажмите «♥ В избранное» — он появится здесь']
     : bare && S.view === 'watch' ? ['Список «Смотреть позже» пуст', 'Нажмите «Посмотреть» в окне фильма — и он будет ждать вас здесь']
+    : bare && S.view === 'mine' ? ['Здесь будут ваши находки', 'Фильмы, которых не было в каталоге и которые вы добавили сами кнопкой «Добавить»']
     : ['Ничего не нашлось', 'Попробуйте другой запрос или сбросьте фильтры'];
   $('#emptyT').textContent = eT;
   $('#emptyS').textContent = eS;
@@ -1512,6 +1517,7 @@ async function action(m, act, btn) {
 
 function posterChanged(m, msg) {
   pver[m.id] = Date.now();
+  if (remoteIds.delete(m.id)) keepRemote();
   keep('kc_pv', pver);
   delete colors[m.id];
   replaceCard(m);
