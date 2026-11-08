@@ -1114,7 +1114,12 @@ function moveTabInd() {
   const on = $('#tabs button.on'), ind = $('.tab-ind');
   // на телефоне и планшете индикатор — стеклянная капсула во всю кнопку
   const pad = matchMedia('(max-width: 1000px)').matches ? 0 : parseFloat(getComputedStyle(on).paddingLeft);
-  ind.style.left = (on.offsetLeft + pad) + 'px';
+  const left = (on.offsetLeft + pad) + 'px';
+  // капля на телефоне на ходу чуть растягивается, как жидкость
+  if (pad === 0 && ind.style.left && ind.style.left !== left && !calm) {
+    ind.classList.add('stretch'); clearTimeout(ind._st); ind._st = setTimeout(() => ind.classList.remove('stretch'), 260);
+  }
+  ind.style.left = left;
   ind.style.width = Math.max(0, on.offsetWidth - pad * 2) + 'px';
 }
 

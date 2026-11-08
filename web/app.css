@@ -886,44 +886,72 @@ body:not(.v-all) .main { padding-top: 84px; }
 /* до 1000 px (планшет, телефон в любой ориентации, узкое окно) вкладки — нижняя панель с иконками:
    пять вкладок, поиск и четыре кнопки в шапку уже не помещаются */
 @media (max-width: 1000px) {
-  body { padding-bottom: calc(72px + var(--sab)); }
+  body { padding-bottom: calc(82px + var(--sab)); }
   .search, .search:focus-within { width: auto; flex: 1; }
   .search + .icon-btn, .icon-btn + .icon-btn { margin-left: -6px; }
   /* размытие у шапки сломало бы нижнюю панель вкладок (она внутри шапки), поэтому плотный фон */
-  .top.scrolled { backdrop-filter: none; background: rgba(var(--bg-rgb), .97); }
-  /* «жидкое стекло»: парящая капсула над контентом — сквозь неё видны размытые постеры, сверху блик */
+  .top.scrolled, :root[data-theme="light"] .top.scrolled { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(var(--bg-rgb), .97); }
+  /* «жидкое стекло»: прозрачная капсула над контентом — сквозь неё видны размытые и насыщенные постеры,
+     по кромке бегут блики (сверху слева и снизу справа), снизу внутри — мягкое свечение, как у толстого стекла */
   .tabs {
-    --gl-edge: rgba(255, 255, 255, .16); --gl-hi: rgba(255, 255, 255, .28); --gl-tint: rgba(var(--bg-rgb), .42);
+    --gl-tint: rgba(var(--bg-rgb), .34); --gl-shine: rgba(255, 255, 255, .5); --gl-rim: rgba(255, 255, 255, .1);
     position: fixed; z-index: 40; left: 0; right: 0; margin: 0 auto; gap: 0;
-    bottom: calc(10px + var(--sab)); width: min(calc(100% - 28px), 420px); height: 56px; padding: 4px;
-    border-radius: 28px; border: 1px solid var(--gl-edge);
-    background: linear-gradient(180deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, .02) 55%), var(--gl-tint);
-    backdrop-filter: blur(20px) saturate(1.9) brightness(1.05); -webkit-backdrop-filter: blur(20px) saturate(1.9) brightness(1.05);
-    box-shadow: inset 0 1px 0 var(--gl-hi), inset 0 -1px 1px rgba(255, 255, 255, .05), 0 12px 32px -10px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .18);
+    bottom: calc(10px + var(--sab)); width: min(calc(100% - 28px), 420px); height: 62px; padding: 5px;
+    border-radius: 31px; isolation: isolate;
+    background:
+      radial-gradient(120% 90% at 50% 120%, rgba(255, 255, 255, .12), transparent 60%),
+      linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .015) 50%, rgba(255, 255, 255, .05)),
+      var(--gl-tint);
+    backdrop-filter: blur(14px) saturate(2.1) brightness(1.08); -webkit-backdrop-filter: blur(14px) saturate(2.1) brightness(1.08);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, .28), inset 0 -1px 1px rgba(255, 255, 255, .1),
+      inset 0 -10px 18px -12px rgba(255, 255, 255, .22), inset 0 8px 14px -10px rgba(255, 255, 255, .14),
+      0 18px 40px -14px rgba(0, 0, 0, .7), 0 3px 10px rgba(0, 0, 0, .22);
   }
-  /* блик по верхней кромке, как у изогнутого стекла */
-  .tabs::before {
-    content: ''; position: absolute; inset: 1px 18px auto; height: 45%; border-radius: 26px 26px 50% 50% / 26px 26px 100% 100%;
-    background: linear-gradient(180deg, rgba(255, 255, 255, .13), transparent); pointer-events: none;
+  /* кромка-преломление: светлая полоска 1px, ярче всего на изгибах */
+  .tabs::before, .tab-ind::before {
+    content: ''; position: absolute; inset: 0; z-index: 2; padding: 1px; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(135deg, var(--gl-shine), var(--gl-rim) 28%, rgba(255, 255, 255, .03) 50%, var(--gl-rim) 72%, rgba(255, 255, 255, .38));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   }
-  .tabs button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; font-size: 10px; letter-spacing: 0; border-radius: 24px; }
-  .tabs .t-ico { display: block; width: 20px; height: 20px; transition: transform .35s var(--ease); }
-  .tabs button.on { color: var(--accent); }
-  .tabs button.on .t-ico { transform: scale(1.06); }
-  /* активная вкладка — капля стекла внутри панели, перетекает к нажатой кнопке */
+  /* блик на верхней половине, как на выпуклом стекле */
+  .tabs::after {
+    content: ''; position: absolute; z-index: 0; inset: 2px 22px auto; height: 42%; border-radius: 30px 30px 60% 60% / 30px 30px 100% 100%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .14), transparent); pointer-events: none;
+  }
+  .tabs button { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; font-size: 10px; font-weight: 650; letter-spacing: 0; border-radius: 26px; color: rgba(238, 240, 250, .7); text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+  .tabs .t-ico { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
+  .tabs .t-ico { display: block; width: 21px; height: 21px; transition: transform .45s cubic-bezier(.3, 1.6, .5, 1), filter .3s; }
+  .tabs button.on { color: var(--accent2); }
+  .tabs button.on .t-ico { transform: translateY(-1px) scale(1.1); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 70%, transparent)); }
+  .tabs button:active .t-ico { transform: scale(.88); }
+  /* активная вкладка — капля стекла внутри панели: перетекает к нажатой кнопке и на ходу чуть растягивается */
   .tab-ind {
-    top: 4px; bottom: 4px; height: auto; border-radius: 24px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .05)), rgba(139, 123, 255, .14);
-    background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .05)), color-mix(in srgb, var(--accent) 15%, transparent);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .07);
-    transition: left .5s cubic-bezier(.3, 1.5, .5, 1), width .5s cubic-bezier(.3, 1.5, .5, 1);
+    --gl-shine: rgba(255, 255, 255, .6); --gl-rim: rgba(255, 255, 255, .14);
+    top: 5px; bottom: 5px; height: auto; border-radius: 26px; z-index: 0;
+    background:
+      radial-gradient(90% 70% at 50% 110%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%),
+      linear-gradient(180deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .05) 60%, rgba(255, 255, 255, .1));
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .35), inset 0 -6px 12px -8px rgba(255, 255, 255, .3), 0 6px 16px -8px rgba(0, 0, 0, .55);
+    transition: left .55s cubic-bezier(.3, 1.35, .5, 1), width .55s cubic-bezier(.3, 1.35, .5, 1), transform .3s var(--ease);
   }
+  .tab-ind.stretch { transform: scale(1.1, .9); }
   :root[data-theme="light"] .tabs {
-    --gl-edge: rgba(255, 255, 255, .75); --gl-hi: rgba(255, 255, 255, .95); --gl-tint: rgba(255, 255, 255, .62);
-    box-shadow: inset 0 1px 0 var(--gl-hi), 0 12px 30px -12px rgba(24, 28, 70, .35), 0 1px 4px rgba(24, 28, 70, .1);
+    --gl-tint: rgba(255, 255, 255, .34); --gl-shine: rgba(255, 255, 255, 1); --gl-rim: rgba(255, 255, 255, .55);
+    box-shadow:
+      inset 0 1px 1px rgba(255, 255, 255, .9), inset 0 -10px 18px -12px rgba(255, 255, 255, .7),
+      0 16px 36px -14px rgba(24, 28, 70, .38), 0 2px 8px rgba(24, 28, 70, .1);
   }
+  :root[data-theme="light"] .tabs button { text-shadow: 0 1px 2px rgba(255, 255, 255, .8); }
+  :root[data-theme="light"] .tabs .t-ico { filter: none; }
   :root[data-theme="light"] .tabs button:not(.on) { color: #3d4257; }
-  :root[data-theme="light"] .tab-ind { background: rgba(255, 255, 255, .75); box-shadow: 0 2px 8px -2px rgba(24, 28, 70, .2), inset 0 0 0 1px rgba(255, 255, 255, .9); }
+  :root[data-theme="light"] .tabs button.on { color: var(--accent); }
+  :root[data-theme="light"] .tab-ind {
+    --gl-shine: #fff; --gl-rim: rgba(255, 255, 255, .8);
+    background: radial-gradient(90% 70% at 50% 110%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%), rgba(255, 255, 255, .55);
+    box-shadow: inset 0 1px 1px #fff, 0 4px 14px -4px rgba(24, 28, 70, .25);
+  }
   #toasts { bottom: calc(80px + var(--sab)); }
 
   /* фильтры: категории — одна лента во всю ширину (листается пальцем), под ней выпадающие списки */
