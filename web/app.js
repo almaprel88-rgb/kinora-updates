@@ -2625,10 +2625,13 @@ function wireMap(root) {
     cancelAnimationFrame(anim);
     to = fit(to);
     if (now || calm) return apply(to);
-    const from = vb, t0 = performance.now();
+    const from = vb;
+    let t0 = 0;
+    // отсчёт от первого кадра: время кадра бывает чуть раньше performance.now(), и тогда k уходил бы в минус
     const step = t => {
-      const k = Math.min(1, (t - t0) / 480), e = 1 - Math.pow(1 - k, 3);
-      apply({ x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, w: from.w + (to.w - from.w) * e });
+      if (!t0) t0 = t;
+      const k = Math.max(0, Math.min(1, (t - t0) / 480)), e = 1 - Math.pow(1 - k, 3);
+      apply(fit({ x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, w: from.w + (to.w - from.w) * e }));
       if (k < 1) anim = requestAnimationFrame(step);
     };
     anim = requestAnimationFrame(step);

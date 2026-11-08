@@ -1921,7 +1921,8 @@ body.cols3 .dens-btn .d3 { display: block; }
 :root[data-theme="light"] .w-c.hov { stroke: #1c1f3a; }
 @media (max-width: 640px) {
   .w-wrap { margin: 0 -10px; border-radius: 12px; }
-  .w-regs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .map-p, .w-head { min-width: 0; }
+  .w-regs { width: 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .w-regs::-webkit-scrollbar { display: none; }
   .w-regs button { padding: 4px 9px; font-size: 11.5px; white-space: nowrap; flex: none; }
   .w-zoom { left: 8px; bottom: 8px; }
