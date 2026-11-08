@@ -4103,6 +4103,7 @@ async function init() {
   }, { passive: true });
 
   $$('#tabs button').forEach(b => b.onclick = () => {
+    if (b.dataset.view === 'games') { openGames(); return; }
     $$('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     moveTabInd();
     S.view = b.dataset.view === 'lists' ? (isListView(listSub) ? listSub : 'fav') : b.dataset.view;

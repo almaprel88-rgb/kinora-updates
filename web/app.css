@@ -1871,7 +1871,7 @@ body.cols3 .dens-btn .d3 { display: block; }
 @media (prefers-reduced-motion: reduce) { .mood, .mood-p img { animation: none; transition: none; } }
 
 /* ---------- лента «Для вас» ---------- */
-#gamesBtn .pt { fill: currentColor; stroke: none; }
+#gamesBtn .pt, .tabs .pt { fill: currentColor; stroke: none; }
 #gamesBtn:hover svg { animation: diceRoll .7s var(--ease); }
 .recs { padding: 26px 0 0; }
 .recs + .moods { padding-top: 14px; }
