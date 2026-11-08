@@ -2574,14 +2574,24 @@ function mapPanel(delay, rated) {
   const next = Object.entries(cat).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const total = new Set(S.movies.flatMap(m => m.country || [])).size;
   const seen = Object.keys(own).length;
+  const regions = MAP_REGIONS.map(([k, n]) => `<button data-reg="${k}"${k === 'world' ? ' class="on"' : ''}>${n}</button>`).join('');
   return `<div class="panel span4 map-p" style="animation-delay:${delay}ms">
-    <h3>Кино со всего мира <small>${seen} ${plural(seen, 'страна', 'страны', 'стран')} из ${total} в каталоге</small></h3>
+    <div class="w-head"><h3>Кино со всего мира <small>${seen} ${plural(seen, 'страна', 'страны', 'стран')} из ${total} в каталоге</small></h3>
+      <div class="w-regs" role="group" aria-label="Часть света">${regions}</div></div>
     <div class="w-wrap"><svg class="w-map" viewBox="0 0 ${WORLD.w} ${WORLD.h}" role="img" aria-label="Карта: из каких стран оценённые фильмы">
-      <path d="${mapGrid()}" class="w-grid"/><path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</svg><div class="w-tip"></div></div>
-    <div class="w-foot"><div class="w-leg">меньше<i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><i data-l="5"></i>больше</div>
+      <defs><radialGradient id="wSea" cx="50%" cy="38%" r="70%"><stop offset="0" class="w-sea1"/><stop offset="1" class="w-sea2"/></radialGradient></defs>
+      <rect class="w-sea" x="-500" y="-500" width="${WORLD.w + 1000}" height="${WORLD.h + 1000}" fill="url(#wSea)"/>
+      <path d="${mapGrid()}" class="w-grid"/><g class="w-land"><path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</g></svg>
+      <div class="w-zoom"><button data-z="1.6" title="Приблизить" aria-label="Приблизить">+</button><button data-z="0.625" title="Отдалить" aria-label="Отдалить">−</button></div>
+      <div class="w-hint">Ctrl + колесо — приблизить</div><div class="w-tip"></div></div>
+    <div class="w-foot"><div class="w-leg"><span>${max > 1 ? 1 : 'меньше'}</span><i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><i data-l="5"></i><span>${max > 1 ? max + ' ' + plural(max, 'фильм', 'фильма', 'фильмов') : 'больше'}</span></div>
       ${next.length ? `<div class="w-next"><span>Куда отправиться дальше:</span>${next.map(([c, n]) => `<button data-country="${esc(c)}" title="${n} ${plural(n, 'фильм', 'фильма', 'фильмов')} с IMDb 7+">${esc(c)}</button>`).join('')}</div>` : ''}</div>
   </div>`;
 }
+
+// быстрые переходы по частям света: [ключ, подпись, x, y, ширина] в координатах карты
+const MAP_REGIONS = [['world', 'Весь мир', 0, 0, 1000], ['eu', 'Европа', 420, 88, 275], ['as', 'Азия', 560, 96, 440],
+  ['na', 'Сев. Америка', 0, 58, 440], ['sa', 'Юж. Америка', 150, 272, 420], ['af', 'Африка', 320, 190, 480]];
 
 // пунктирная сетка параллелей и меридианов под картой
 const mapGrid = () => {
@@ -2594,24 +2604,133 @@ const mapGrid = () => {
 function wireMap(root) {
   const wrap = $('.w-wrap', root);
   if (!wrap) return;
-  const tipEl = $('.w-tip', wrap);
+  const svg = $('.w-map', wrap), tipEl = $('.w-tip', wrap), hint = $('.w-hint', wrap);
+  const W = WORLD.w, H = WORLD.h, MAXZ = 8;
+  const dots = $$('.w-dot', svg).map(c => [c, +c.getAttribute('r')]);
+  let vb = { x: 0, y: 0, w: W }, anim = 0;
+
+  // приближение: меняем viewBox, держим пропорции и не даём уехать за край карты
+  const fit = v => {
+    const w = Math.min(W, Math.max(W / MAXZ, v.w)), h = w * H / W;
+    return { w, x: Math.min(W - w, Math.max(0, v.x)), y: Math.min(H - h, Math.max(0, v.y)) };
+  };
+  const apply = v => {
+    vb = v;
+    const z = W / v.w;
+    svg.setAttribute('viewBox', `${v.x.toFixed(2)} ${v.y.toFixed(2)} ${v.w.toFixed(2)} ${(v.w * H / W).toFixed(2)}`);
+    dots.forEach(([c, r]) => c.setAttribute('r', (r / Math.pow(z, .65)).toFixed(2)));
+    wrap.classList.toggle('zoomed', z > 1.02);
+  };
+  const go = (to, now) => {
+    cancelAnimationFrame(anim);
+    to = fit(to);
+    if (now || calm) return apply(to);
+    const from = vb, t0 = performance.now();
+    const step = t => {
+      const k = Math.min(1, (t - t0) / 480), e = 1 - Math.pow(1 - k, 3);
+      apply({ x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, w: from.w + (to.w - from.w) * e });
+      if (k < 1) anim = requestAnimationFrame(step);
+    };
+    anim = requestAnimationFrame(step);
+  };
+  const setReg = k => $$('.w-regs button', root).forEach(b => b.classList.toggle('on', b.dataset.reg === k));
+  // приблизить в f раз вокруг точки экрана (или вокруг центра карты)
+  const zoomAt = (f, cx, cy, now) => {
+    const r = svg.getBoundingClientRect(), h = vb.w * H / W;
+    const fx = cx == null ? .5 : (cx - r.left) / r.width, fy = cy == null ? .5 : (cy - r.top) / r.height;
+    const px = vb.x + fx * vb.w, py = vb.y + fy * h;
+    const w = Math.min(W, Math.max(W / MAXZ, vb.w / f));
+    go({ x: px - fx * w, y: py - fy * w * H / W, w }, now);
+    setReg(w >= W - 1 ? 'world' : null);
+  };
+  $$('.w-regs button', root).forEach(b => b.onclick = () => {
+    const [, , x, y, w] = MAP_REGIONS.find(r => r[0] === b.dataset.reg);
+    go({ x, y, w });
+    setReg(b.dataset.reg);
+  });
+  $$('.w-zoom button', wrap).forEach(b => b.onclick = () => zoomAt(+b.dataset.z));
+
+  // колесо: приближает с Ctrl или когда карта уже приближена, иначе страница прокручивается как обычно
+  let hintT = 0;
+  svg.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey && vb.w >= W - 1) {
+      hint.classList.add('on'); clearTimeout(hintT); hintT = setTimeout(() => hint.classList.remove('on'), 1400);
+      return;
+    }
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? .05 : .0022)), e.clientX, e.clientY, true);
+  }, { passive: false });
+
+  // перетаскивание мышью или пальцем (когда карта приближена) и щипок двумя пальцами
+  const ptrs = new Map();
+  let drag = null, moved = false;
+  const startDrag = () => {
+    const p = [...ptrs.values()];
+    drag = { vb: { ...vb }, sx: p[0][0], sy: p[0][1], d0: 0 };
+    if (p.length === 2) {
+      drag.d0 = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+      drag.mx = (p[0][0] + p[1][0]) / 2; drag.my = (p[0][1] + p[1][1]) / 2;
+    }
+  };
+  svg.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (ptrs.size === 1) moved = false;
+    startDrag();
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag || !ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    const r = svg.getBoundingClientRect();
+    if (ptrs.size === 2 && drag.d0) {
+      const [[ax, ay], [bx, by]] = [...ptrs.values()];
+      const w = Math.min(W, Math.max(W / MAXZ, drag.vb.w * drag.d0 / Math.hypot(ax - bx, ay - by)));
+      const fx = (drag.mx - r.left) / r.width, fy = (drag.my - r.top) / r.height;
+      const px = drag.vb.x + fx * drag.vb.w, py = drag.vb.y + fy * drag.vb.w * H / W;
+      const sx = ((ax + bx) / 2 - drag.mx) * w / r.width, sy = ((ay + by) / 2 - drag.my) * w / r.width;
+      apply(fit({ x: px - fx * w - sx, y: py - fy * w * H / W - sy, w }));
+      moved = true; tipEl.classList.remove('on'); setReg(null);
+      return;
+    }
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (drag.vb.w >= W - 1 || (!moved && Math.hypot(dx, dy) < 6)) return;
+    if (!moved) { svg.setPointerCapture(e.pointerId); wrap.classList.add('grab'); }
+    moved = true;
+    tipEl.classList.remove('on');
+    const s = drag.vb.w / r.width;
+    apply(fit({ x: drag.vb.x - dx * s, y: drag.vb.y - dy * s, w: drag.vb.w }));
+    setReg(null);
+  });
+  const up = e => {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size) startDrag(); else { drag = null; wrap.classList.remove('grab'); }
+  };
+  svg.addEventListener('pointerup', up);
+  svg.addEventListener('pointercancel', up);
+
+  const unhov = () => { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); };
   const show = (el, e) => {
     const [name, sub] = el.dataset.tip.split('|'), r = wrap.getBoundingClientRect();
-    tipEl.innerHTML = `<b>${esc(name)}</b>${esc(sub)}`;
-    const x = Math.min(Math.max(e.clientX - r.left, 80), r.width - 80);
-    tipEl.style.transform = `translate(${x}px, ${e.clientY - r.top}px)`;
+    tipEl.innerHTML = `<b><i data-l="${el.dataset.l}"></i>${esc(name)}</b>${esc(sub)}`;
+    const x = Math.min(Math.max(e.clientX - r.left, 90), r.width - 90);
+    tipEl.style.transform = `translate(${x}px, ${Math.max(e.clientY - r.top, 64)}px)`;
     tipEl.classList.add('on');
+    if (el.classList.contains('hov')) return;
     $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov'));
     el.classList.add('hov');
+    // наверх, чтобы обводку не перекрывали соседи; точки островов всегда остаются поверх стран
+    if (!el.classList.contains('w-dot')) el.parentNode.insertBefore(el, $('.w-dot', svg));
   };
   wrap.addEventListener('pointermove', e => {
+    if (drag && moved) return;
     const el = e.target.closest('.w-c');
-    if (el) show(el, e); else { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); }
+    if (el) show(el, e); else unhov();
   });
-  wrap.addEventListener('pointerleave', () => { tipEl.classList.remove('on'); $$('.w-c.hov', wrap).forEach(p => p.classList.remove('hov')); });
+  wrap.addEventListener('pointerleave', unhov);
   // на компьютере нажатие сразу открывает фильмы страны; на телефоне первое касание показывает подсказку
   let armed = null;
   wrap.addEventListener('click', e => {
+    if (moved) { moved = false; return; }
     const el = e.target.closest('.w-c');
     if (!el) return;
     if (e.pointerType === 'touch' || matchMedia('(hover: none)').matches) {
@@ -2619,7 +2738,15 @@ function wireMap(root) {
     }
     goCountry(el.dataset.c);
   });
-  $$('.w-next [data-country]', root).forEach(b => b.onclick = () => goCountry(b.dataset.country));
+  // наведение на «куда отправиться» подсвечивает страну на карте
+  $$('.w-next [data-country]', root).forEach(b => {
+    const c = MAP_AS[b.dataset.country] || b.dataset.country;
+    const el = $$('.w-c', svg).find(p => p.dataset.c === c);
+    b.onclick = () => goCountry(b.dataset.country);
+    if (!el) return;
+    b.onmouseenter = () => el.classList.add('pulse');
+    b.onmouseleave = () => el.classList.remove('pulse');
+  });
 }
 
 function goCountry(c) {

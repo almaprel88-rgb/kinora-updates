@@ -496,7 +496,7 @@ textarea:focus, .field input:focus { border-color: rgba(139, 123, 255, .6); box-
 .toast.out { opacity: 0; transform: translateY(8px); transition: all .3s var(--ease); }
 
 /* в статистике баннера нет — отступ под шапку */
-body.v-stats .main, body.v-fav .main, body.v-watch .main, body.v-coll .main { padding-top: 84px; }
+body:not(.v-all) .main { padding-top: 84px; }
 
 @media (max-width: 1200px) {
   :root { --pad: 28px; }
@@ -962,7 +962,7 @@ body.v-stats .main, body.v-fav .main, body.v-watch .main, body.v-coll .main { pa
   .flags i { width: 22px; height: 22px; font-size: 11px; }
   .empty { padding: 60px 16px 80px; }
 
-  body.v-stats .main, body.v-fav .main, body.v-watch .main, body.v-coll .main { padding-top: calc(66px + env(safe-area-inset-top)); }
+  body:not(.v-all) .main { padding-top: calc(66px + env(safe-area-inset-top)); }
 
   /* окна — во весь экран */
   .modal { place-items: stretch; }
@@ -1822,43 +1822,111 @@ body.cols3 .dens-btn .d3 { display: block; }
 }
 
 /* ---------- карта «Кино со всего мира» ---------- */
-.map-p { --w0: var(--card3); }
-.w-wrap { position: relative; margin: 0 -8px; }
-.w-map { display: block; width: 100%; height: auto; overflow: hidden; stroke-linejoin: round; stroke-linecap: round; }
-.w-grid { fill: none; stroke: var(--line); stroke-width: .6; stroke-dasharray: 2 4; opacity: .7; pointer-events: none; }
-.w-rest { fill: var(--card2); stroke: var(--bg2); stroke-width: .5; }
-.w-c { fill: var(--w0); stroke: var(--bg2); stroke-width: .5; cursor: pointer; transition: fill .3s, opacity .25s; }
-@media (hover: hover) { .w-map:has(.w-c.hov) .w-c:not(.hov):not([data-l="0"]) { opacity: .55; } }
-.w-c[data-l="1"], .w-leg i[data-l="1"] { fill: color-mix(in srgb, var(--accent) 30%, var(--w0)); background: color-mix(in srgb, var(--accent) 30%, var(--w0)); }
-.w-c[data-l="2"], .w-leg i[data-l="2"] { fill: color-mix(in srgb, var(--accent) 48%, var(--w0)); background: color-mix(in srgb, var(--accent) 48%, var(--w0)); }
-.w-c[data-l="3"], .w-leg i[data-l="3"] { fill: color-mix(in srgb, var(--accent) 66%, var(--w0)); background: color-mix(in srgb, var(--accent) 66%, var(--w0)); }
-.w-c[data-l="4"], .w-leg i[data-l="4"] { fill: color-mix(in srgb, var(--accent) 84%, var(--w0)); background: color-mix(in srgb, var(--accent) 84%, var(--w0)); }
-.w-c[data-l="5"], .w-leg i[data-l="5"] { fill: var(--cyan); background: var(--cyan); }
-.w-c.hov { stroke: var(--text); stroke-width: 1.2; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--cyan) 55%, transparent)); }
-.w-dot { stroke-width: 1.5; }
+/* шкала идёт по фирменному градиенту: фиолетовый → синий → голубой, светлее с каждой ступенью */
+.map-p {
+  --sea1: #161935; --sea2: #0c0d1c; --sea-line: rgba(140, 160, 255, .09);
+  --w0: #2c2e48; --w-rest: #242539; --w-edge: #11122a;
+  --w1: #3f3a86; --w2: #5f52cf; --w3: #8b7bff; --w4: #6f9dff; --w5: #4fd8ff;
+  --w-glow: rgba(79, 216, 255, .55);
+}
+.w-wrap {
+  position: relative; border-radius: 16px; overflow: hidden; isolation: isolate;
+  background: var(--sea2); box-shadow: inset 0 0 0 1px var(--line2);
+}
+.w-wrap::after {
+  /* мягкое затемнение по краям — карта как будто под стеклом */
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  box-shadow: inset 0 0 60px -10px rgba(0, 0, 0, .55);
+}
+.w-map { display: block; width: 100%; height: auto; stroke-linejoin: round; stroke-linecap: round; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.w-wrap.zoomed .w-map { touch-action: none; cursor: grab; }
+.w-wrap.grab .w-map, .w-wrap.grab .w-c { cursor: grabbing; }
+.w-sea1 { stop-color: var(--sea1); }
+.w-sea2 { stop-color: var(--sea2); }
+.w-grid { fill: none; stroke: var(--sea-line); stroke-width: 1; stroke-dasharray: 2 5; pointer-events: none; vector-effect: non-scaling-stroke; }
+.w-rest { fill: var(--w-rest); stroke: var(--w-edge); stroke-width: .7; vector-effect: non-scaling-stroke; }
+.w-c {
+  fill: var(--w0); stroke: var(--w-edge); stroke-width: .7; vector-effect: non-scaling-stroke; cursor: pointer;
+  transition: fill .3s, opacity .25s, stroke .2s;
+}
+.w-c[data-l="0"]:hover { fill: color-mix(in srgb, var(--w0) 80%, var(--text)); }
+@media (hover: hover) { .w-map:has(.w-c.hov) .w-c:not(.hov):not([data-l="0"]) { opacity: .5; } }
+.w-c[data-l="1"] { fill: var(--w1); }
+.w-c[data-l="2"] { fill: var(--w2); }
+.w-c[data-l="3"] { fill: var(--w3); }
+.w-c[data-l="4"] { fill: var(--w4); }
+.w-c[data-l="5"] { fill: var(--w5); }
+.w-c.hov { stroke: var(--text); stroke-width: 1.6; filter: drop-shadow(0 0 8px var(--w-glow)); }
+.w-c.pulse { stroke: var(--w5); stroke-width: 2; animation: wPulse 1.1s ease-in-out infinite alternate; }
+@keyframes wPulse { from { filter: drop-shadow(0 0 2px var(--w-glow)); } to { filter: drop-shadow(0 0 12px var(--w-glow)); } }
+.w-dot { stroke: var(--sea2); stroke-width: 1.4; }
+.w-dot[data-l="0"] { fill: color-mix(in srgb, var(--w0) 70%, var(--text)); }
+
+/* части света — в заголовке, приближение — в углу карты над океаном */
+.w-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-bottom: 18px; }
+.w-head h3 { margin: 0; min-width: 0; }
+.w-regs { display: flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line2); }
+.w-zoom {
+  position: absolute; z-index: 2; left: 12px; bottom: 12px; display: flex; flex-direction: column; padding: 3px; gap: 2px; border-radius: 12px;
+  background: var(--glass); border: 1px solid var(--line2); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.w-regs button, .w-zoom button { border-radius: 9px; color: var(--muted); font-weight: 600; transition: background .2s, color .2s; }
+.w-regs button { padding: 5px 11px; font-size: 12px; }
+.w-zoom button { width: 30px; height: 30px; font-size: 18px; line-height: 1; }
+.w-regs button:hover, .w-zoom button:hover { color: var(--text); background: var(--ghost2); }
+.w-regs button.on { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.w-hint {
+  position: absolute; z-index: 2; left: 50%; bottom: 14px; translate: -50% 0; padding: 6px 12px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--line2); font-size: 12px; color: var(--text2);
+  opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.w-hint.on { opacity: 1; }
+@media (hover: none) { .w-hint { display: none; } }
+
 .w-tip {
   position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; padding: 8px 12px; border-radius: 10px; white-space: nowrap;
   background: var(--menu); border: 1px solid var(--line2); box-shadow: 0 14px 30px -12px rgba(0, 0, 0, .7);
   font-size: 12px; color: var(--muted); opacity: 0; translate: -50% calc(-100% - 14px); transition: opacity .15s;
 }
 .w-tip.on { opacity: 1; }
-.w-tip b { display: block; color: var(--text); font: 700 13.5px var(--display); }
-.w-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 14px; }
-.w-leg { display: flex; align-items: center; gap: 4px; color: var(--dim); font-size: 11.5px; font-weight: 600; }
-.w-leg i { width: 22px; height: 10px; border-radius: 3px; }
-.w-leg i:first-of-type { margin-left: 4px; }
-.w-leg i:last-of-type { margin-right: 4px; }
+.w-tip b { display: flex; align-items: center; gap: 7px; color: var(--text); font: 700 13.5px var(--display); margin-bottom: 1px; }
+.w-tip b i { width: 9px; height: 9px; border-radius: 3px; background: var(--w0); box-shadow: inset 0 0 0 1px var(--line3); }
+
+.w-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-top: 16px; }
+.w-leg { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.w-leg i { width: 26px; height: 8px; margin: 0 -8px 0 0; }
+.w-leg i:last-of-type { margin-right: 0; }
+.w-leg i[data-l="1"] { border-radius: 4px 0 0 4px; }
+.w-leg i[data-l="5"] { border-radius: 0 4px 4px 0; }
+.w-leg i[data-l="1"], .w-tip i[data-l="1"] { background: var(--w1); }
+.w-leg i[data-l="2"], .w-tip i[data-l="2"] { background: var(--w2); }
+.w-leg i[data-l="3"], .w-tip i[data-l="3"] { background: var(--w3); }
+.w-leg i[data-l="4"], .w-tip i[data-l="4"] { background: var(--w4); }
+.w-leg i[data-l="5"], .w-tip i[data-l="5"] { background: var(--w5); }
 .w-next { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
 .w-next span { margin-right: 4px; }
 .w-next button { padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text2); background: var(--card2); border: 1px solid var(--line2); transition: background .2s, border-color .2s; }
 .w-next button:hover { background: var(--accent-soft); border-color: var(--accent); }
-:root[data-theme="light"] .map-p { --w0: #e2e4f0; }
-:root[data-theme="light"] .w-rest { fill: #eef0f7; stroke: #fff; }
-:root[data-theme="light"] .w-c { stroke: #fff; }
+
+:root[data-theme="light"] .map-p {
+  --sea1: #f1f4ff; --sea2: #e1e7f8; --sea-line: rgba(70, 90, 170, .12);
+  --w0: #ffffff; --w-rest: #f4f5fb; --w-edge: #cdd3e8;
+  --w1: #d6cfff; --w2: #ab9cff; --w3: #8170f7; --w4: #5b62e8; --w5: #2f7fe0;
+  --w-glow: rgba(91, 98, 232, .45);
+}
+:root[data-theme="light"] .w-wrap::after { box-shadow: inset 0 0 50px -16px rgba(60, 70, 140, .25); }
+:root[data-theme="light"] .w-c[data-l="0"]:hover { fill: #eceefa; }
+:root[data-theme="light"] .w-dot { stroke: #fff; }
+:root[data-theme="light"] .w-dot[data-l="0"] { fill: #c3c9e3; }
 :root[data-theme="light"] .w-c.hov { stroke: #1c1f3a; }
-:root[data-theme="light"] .w-c[data-l="5"], :root[data-theme="light"] .w-leg i[data-l="5"] { fill: var(--accent); background: var(--accent); }
 @media (max-width: 640px) {
-  .w-wrap { margin: 0 -10px; }
+  .w-wrap { margin: 0 -10px; border-radius: 12px; }
+  .w-regs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .w-regs::-webkit-scrollbar { display: none; }
+  .w-regs button { padding: 4px 9px; font-size: 11.5px; white-space: nowrap; flex: none; }
+  .w-zoom { left: 8px; bottom: 8px; }
+  .w-zoom { padding: 2px; border-radius: 9px; }
+  .w-zoom button { width: 24px; height: 24px; font-size: 15px; border-radius: 7px; }
   .w-foot { gap: 10px; }
 }
 
