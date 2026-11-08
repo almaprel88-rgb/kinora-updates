@@ -1828,7 +1828,37 @@ function peoplePanel(delay, rated, avg) {
   return `<div class="panel span4 pp-p" style="animation-delay:${delay}ms">
     <h3 title="Порядок — по средней оценке с поправкой на число фильмов: у кого их больше, тому больше доверия">Любимые режиссёры и актёры <small>средняя оценка, от двух фильмов; чем больше фильмов, тем выше доверие</small></h3>
     <div class="pp-grid">${col('Режиссёры', dirs, 'Оцените хотя бы два фильма одного режиссёра')}${col('Актёры', acts, 'Оцените хотя бы два фильма с одним актёром')}</div>
+    ${mostSeenDirs(delay)}
   </div>`;
+}
+
+// топ-5 режиссёров по числу просмотренных фильмов: с оценкой или с отметкой просмотра
+function mostSeenDirs(delay) {
+  const by = {};
+  S.movies.forEach(m => {
+    const r = R(m.id);
+    if (!r || !(ov(m) >= 0 || (r.views || []).length || r.done)) return;
+    new Set((m.director || '').split(/\s*,\s*/)).forEach(p => p && (by[p] = by[p] || []).push(m));
+  });
+  const top = Object.entries(by).filter(([, l]) => l.length >= 2)
+    .map(([p, l]) => {
+      const sc = l.map(ov).filter(s => s >= 0);
+      l.sort((a, b) => ov(b) - ov(a));
+      return { p, l, a: sc.length ? sc.reduce((x, y) => x + y, 0) / sc.length : -1 };
+    })
+    .sort((a, b) => b.l.length - a.l.length || b.a - a.a).slice(0, 5);
+  if (!top.length) return '';
+  const max = top[0].l.length;
+  return `<div class="pp-most"><h4>Чаще всего смотрите <small>режиссёры с наибольшим числом просмотренных фильмов</small></h4>
+    <div class="pp-mlist">${top.map((x, i) => {
+      const n = x.l.length, t = x.a >= 0 ? TIERS[tierIdx(x.a)] : null;
+      return `<button class="pp-row pp-m" data-person="${esc(x.p)}" style="--t1:${t ? t.c1 : 'var(--dim)'};animation-delay:${delay + 300 + i * 35}ms" title="Все фильмы: ${esc(x.p)}">
+        <span class="pp-rk">${i + 1}</span>
+        <span class="pp-ph">${x.l.slice(0, 3).map(m => `<img src="${purl(m)}" loading="lazy" decoding="async" alt="">`).join('')}</span>
+        <span class="pp-nm">${esc(x.p)}<span class="pp-bar"><i style="width:${Math.round(n / max * 100)}%"></i></span>
+          <small>${t ? `средняя ${fmt(x.a)}` : 'без оценок'}</small></span>
+        <b class="pp-cnt">${n}<small>${plural(n, 'фильм', 'фильма', 'фильмов')}</small></b></button>`;
+    }).join('')}</div></div>`;
 }
 
 /* ---------- время в кино и итоги года ---------- */
