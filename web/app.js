@@ -3066,7 +3066,9 @@ function openGames(start) {
   gamesM.innerHTML = `<div class="backdrop"></div><div class="sheet roul games"><button class="x" title="Закрыть (Esc)">✕</button><div class="g-body"></div></div>`;
   $('.x', gamesM).onclick = $('.backdrop', gamesM).onclick = closeGames;
   gamesM.classList.add('open');
-  if (start === 'tourn') tournSetup(); else if (start === 'quiz') quizSetup(); else gamesHub();
+  if (start === 'tourn') tournSetup(); else if (start === 'quiz') quizSetup(); else if (XG[start]) xSetup(start); else gamesHub();
+  // лимит игр в Telegram: строка «осталось раундов» обновляется, когда сервер ответил
+  premRefresh().then(() => { const l = $('.g-lim', gamesM); if (l) { l.outerHTML = playLine(); wirePlayLine(); } });
 }
 function closeGames() { gameStop(); gamesM.classList.remove('open'); }
 // из итогов игры — сразу в окно фильма
@@ -3083,9 +3085,13 @@ function gamesHub() {
       <button class="g-card" data-g="quiz" style="--c1:#4fd8ff;--c2:#9d7bff"><span class="g-e">🎞️</span><b>Угадай кадр</b>
         <span>${Q_N} кадров из известных фильмов — узнайте фильм, пока не кончилось время</span>
         <small>${gstat.quiz ? `Рекорд: ${gstat.quizBest} ${plural(gstat.quizBest, 'очко', 'очка', 'очков')}` : 'Ещё не играли'}</small></button>
+      ${Object.entries(XG).map(([k, G]) => `<button class="g-card" data-g="${k}" style="--c1:${G.c1};--c2:${G.c2}"><span class="g-e">${G.e}</span><b>${G.name}</b>
+        <span>${G.about}</span><small>${gstat['x_' + k] ? `Рекорд: ${pts$(gstat['xb_' + k] || 0)}` : 'Ещё не играли'}</small></button>`).join('')}
     </div>
+    ${playLine()}
     ${champs.length ? `<div class="g-champs"><h4>Прошлые чемпионы</h4><div class="g-ch-row">${champs.map(m => `<button data-id="${esc(m.id)}" title="${esc(m.title)}">${posterHTML(m, false)}</button>`).join('')}</div></div>` : ''}`;
-  $$('[data-g]', gBody()).forEach(b => b.onclick = () => b.dataset.g === 'tourn' ? tournSetup() : quizSetup());
+  $$('[data-g]', gBody()).forEach(b => b.onclick = () => b.dataset.g === 'tourn' ? tournSetup() : b.dataset.g === 'quiz' ? quizSetup() : xSetup(b.dataset.g));
+  wirePlayLine();
   $$('.g-ch-row [data-id]', gBody()).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
 }
 
@@ -3093,7 +3099,8 @@ let tn = null, qz = null;
 function gameStop() {
   tn = null;
   if (qz) clearTimeout(qz.timer);
-  qz = null;
+  if (xq) clearTimeout(xq.timer);
+  qz = null; xq = null;
 }
 
 /* ---------- турнир ---------- */
@@ -3275,9 +3282,14 @@ function quizStart() {
 
 async function quizNext() {
   const z = qz;
-  if (!z) return;
+  if (!z || z.busy) return;
+  if (z.i + 1 >= Q_N) return quizEnd();
+  // каждый кадр — один раунд из дневного лимита (только в Telegram)
+  z.busy = true;
+  const go = await playGate(quizNext);
+  z.busy = false;
+  if (!go || qz !== z) return;
   z.i++;
-  if (z.i >= Q_N) return quizEnd();
   gBody().innerHTML = `<div class="q-top"><span class="q-n">Кадр ${z.i + 1} из ${Q_N}</span><span class="q-sc">${z.score} ${plural(z.score, 'очко', 'очка', 'очков')}</span></div>
     <div class="q-frame loading"></div>`;
   let m = null, img = null;
@@ -3367,10 +3379,235 @@ function quizEnd() {
   qz = null;
 }
 
+/* ---------- викторины: по описанию, постер по кусочкам, по актёрам, год ---------- */
+const X_N = 10;
+const XG = {
+  desc: { name: 'Угадай по описанию', e: '📜', c1: '#ffd36b', c2: '#ff8a5b', sec: 30,
+    about: 'Сюжет без названия — узнайте фильм по описанию', rules: 'Описание сюжета, слова из названия скрыты. Четыре варианта, 30 секунд.',
+    ok: m => (m.desc || '').length >= 80 },
+  poster: { name: 'Постер по кусочкам', e: '🧩', c1: '#7cf29a', c2: '#2dc5ff', sec: 20,
+    about: 'Постер проявляется из размытия — узнайте фильм как можно раньше', rules: 'Постер постепенно становится чётче. Чем раньше узнаете фильм, тем больше очков.',
+    ok: () => true },
+  actors: { name: 'Угадай по актёрам', e: '🎭', c1: '#ff9ad5', c2: '#a56bff', sec: 25,
+    about: 'Актёры открываются по одному, последним — режиссёр', rules: 'Каждые 5 секунд открывается новая подсказка: актёры, потом режиссёр.',
+    ok: m => m.actors.length >= 3 },
+  year: { name: 'Угадай год', e: '📅', c1: '#8ab4ff', c2: '#4fe0c2', sec: 25,
+    about: 'Назовите год выхода: точное попадание — 100 очков', rules: 'Выберите год на шкале. Точно — 100 очков, ошибка на год — 80, на два — 70 и так далее.',
+    ok: m => m.year >= 1920 },
+};
+let xSrc = 'all', xq = null;
+const famous = m => (m.imdbVotes || 0) >= (ours(m) ? 8000 : 150000);
+const xPool = (g, k) => S.movies.filter(m => !m.custom && !isSeries(m) && XG[g].ok(m)
+  && (k === 'mine' ? ov(m) >= 0 : famous(m) && (k === 'all' || (k === 'ours' ? ours(m) : !ours(m)))));
+const pts$ = n => `${n} ${plural(n, 'очко', 'очка', 'очков')}`;
+
+// слова из названия в описании прячем: сравниваем по основе, чтобы скрыть и «Матрицы», и «Матрицу»
+function maskTitle(m) {
+  const words = [...norm(m.title).split(/[^a-zа-я0-9]+/), ...norm(m.orig || '').split(/[^a-zа-я0-9]+/)]
+    .filter(w => w.length >= 4).map(w => w.slice(0, Math.max(4, w.length - 2)));
+  return String(m.desc).split(/([A-Za-zА-Яа-яЁё0-9]+)/).map((w, i) => i % 2 && words.some(st => norm(w).startsWith(st))
+    ? '<i class="xq-mask">•••</i>' : esc(w)).join('');
+}
+
+function xSetup(g) {
+  gameStop();
+  const G = XG[g];
+  if (!Q_SRC.some(([k]) => k === xSrc && xPool(g, k).length >= X_N)) xSrc = 'all';
+  const best = gstat['xb_' + g] || 0, played = gstat['x_' + g] || 0;
+  gBody().innerHTML = `<h2>${G.e} ${G.name}</h2><div class="r-sub">${X_N} раундов. ${G.rules}${g === 'year' ? '' : ' Подсказка «50/50» убирает два неверных варианта и делит очки пополам.'}
+      ${played ? `<br>Ваш рекорд: <b>${pts$(best)}</b>` : ''}</div>
+    <div class="seg q-src">${Q_SRC.map(([k, n]) => { const c = xPool(g, k).length; return `<button data-k="${k}" class="${k === xSrc ? 'on' : ''}" ${c < X_N ? 'disabled title="Мало фильмов в этой подборке"' : ''}>${n}</button>`; }).join('')}</div>
+    ${playLine()}
+    <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn accent" data-start>▶ Начать</button></div>`;
+  $$('.q-src button', gBody()).forEach(b => b.onclick = () => { xSrc = b.dataset.k; $$('.q-src button', gBody()).forEach(x => x.classList.toggle('on', x === b)); });
+  $('[data-back]', gBody()).onclick = gamesHub;
+  $('[data-start]', gBody()).onclick = () => xStart(g);
+  wirePlayLine();
+}
+
+function xStart(g) {
+  xq = { g, pool: shuffle(xPool(g, xSrc)), i: -1, score: 0, right: 0, res: [] };
+  xNext();
+}
+
+async function xNext() {
+  const z = xq;
+  if (!z || z.busy) return;
+  if (z.i + 1 >= X_N || !z.pool.length) return xEnd();
+  z.busy = true;
+  const go = await playGate(xNext);
+  z.busy = false;
+  if (!go || xq !== z) return;
+  z.i++;
+  const G = XG[z.g], m = z.pool.pop(), year = z.g === 'year';
+  Object.assign(z, { m, done: false, hint: false, t0: performance.now(), opts: year ? null : quizOptions(m) });
+  let q;
+  if (z.g === 'desc') q = `<div class="xq-desc">${maskTitle(m)}</div>`;
+  else if (z.g === 'poster') q = `<div class="xq-poster" style="animation-duration:${G.sec}s">${posterHTML(m, false)}</div>`;
+  else if (z.g === 'actors') {
+    const cl = [...m.actors.slice(0, 4).map(a => ['Актёр', a]), ...(m.director ? [['Режиссёр', m.director]] : [])];
+    q = `<div class="xq-cast">${cl.map(([k, v], i) => `<div class="xq-a${k === 'Режиссёр' ? ' dir' : ''}" style="animation-delay:${i * 5}s"><small>${k}</small><b>${esc(v)}</b></div>`).join('')}</div>`;
+  } else {
+    const now = new Date().getFullYear();
+    q = `<div class="xq-yr"><div class="xq-yp">${posterHTML(m, false)}</div><div class="xq-yb"><b>${esc(m.title)}</b>
+      ${m.director ? `<small>Режиссёр: ${esc(m.director)}</small>` : ''}<div class="xq-yv">1995</div>
+      <input type="range" class="xq-range" min="1920" max="${now}" value="1995" aria-label="Год выхода">
+      <div class="xq-ys"><button class="btn sm ghost" data-y="-1">−1</button><button class="btn sm ghost" data-y="1">+1</button></div></div></div>`;
+  }
+  gBody().innerHTML = `<div class="q-top"><span class="q-n">${G.e} Раунд ${z.i + 1} из ${X_N}</span><span class="q-sc">${pts$(z.score)}</span></div>
+    ${q}
+    <div class="q-time"><i style="animation-duration:${calm ? 0.001 : G.sec}s"></i></div>
+    ${year ? '' : `<div class="q-opts">${z.opts.map((o, k) => `<button class="q-opt" data-k="${k}"><em>${k + 1}</em><span>${esc(o.title)}<small>${z.g === 'poster' ? '' : o.year || ''}</small></span></button>`).join('')}</div>`}
+    <div class="q-foot">${year ? '<button class="btn sm accent" data-ans>Ответить</button>' : '<button class="btn sm ghost" data-hint>💡 50/50</button>'}<div class="q-res"></div><button class="btn sm accent hidden" data-next>${z.i + 1 < X_N ? 'Дальше →' : 'Итоги →'}</button></div>`;
+  const body = gBody();
+  if (calm) $('.q-time i', body).style.animation = 'none';
+  if (year) {
+    const r = $('.xq-range', body), v = $('.xq-yv', body);
+    r.oninput = () => v.textContent = r.value;
+    $$('[data-y]', body).forEach(b => b.onclick = () => { r.value = +r.value + +b.dataset.y; r.oninput(); });
+    $('[data-ans]', body).onclick = () => xAnswer(+r.value);
+  } else {
+    $$('.q-opt', body).forEach(b => b.onclick = () => xAnswer(+b.dataset.k));
+    $('[data-hint]', body).onclick = e => {
+      if (z.done || z.hint) return;
+      z.hint = true; e.currentTarget.disabled = true;
+      shuffle($$('.q-opt', body).filter(b => z.opts[+b.dataset.k] !== m)).slice(0, 2).forEach(b => { b.disabled = true; b.classList.add('off'); });
+    };
+  }
+  $('[data-next]', body).onclick = xNext;
+  // время вышло: в «Году» засчитывается то, что выставлено на шкале
+  z.timer = setTimeout(() => xAnswer(year ? +$('.xq-range', body).value : -1), G.sec * 1000);
+}
+
+function xAnswer(k) {
+  const z = xq;
+  if (!z || z.done) return;
+  z.done = true;
+  clearTimeout(z.timer);
+  const G = XG[z.g], body = gBody(), left = Math.max(0, G.sec - (performance.now() - z.t0) / 1000);
+  let ok, pts, msg;
+  if (z.g === 'year') {
+    const d = Math.abs(k - z.m.year);
+    pts = d === 0 ? 100 : Math.max(0, 90 - d * 10); ok = d <= 2;
+    msg = d === 0 ? `<b class="ok">🎯 Точно! +100</b>` : `<b class="${ok ? 'ok' : 'bad'}">${pts ? '+' + pts : 'Мимо'}</b><span>Ваш ответ ${k}, на самом деле — ${z.m.year}</span>`;
+    $('.xq-range', body).disabled = true; $('[data-ans]', body).disabled = true; $$('[data-y]', body).forEach(b => b.disabled = true);
+  } else {
+    ok = k >= 0 && z.opts[k] === z.m;
+    pts = ok ? Math.round((50 + 50 * left / G.sec) * (z.hint ? .5 : 1)) : 0;
+    msg = ok ? `<b class="ok">✓ Верно! +${pts}</b>` : `<b class="bad">${k < 0 ? '⏱ Время вышло' : '✗ Мимо'}</b><span>Это «${esc(z.m.title)}»${z.m.year ? ', ' + z.m.year : ''}</span>`;
+    $$('.q-opt', body).forEach(b => {
+      const o = z.opts[+b.dataset.k];
+      b.disabled = true;
+      b.classList.toggle('right', o === z.m);
+      b.classList.toggle('wrong', +b.dataset.k === k && !ok);
+    });
+    $('[data-hint]', body).disabled = true;
+  }
+  z.score += pts; z.right += ok;
+  z.res.push({ m: z.m, ok, pts });
+  // ответ дан — показываем всё: постер без размытия, все подсказки
+  body.querySelectorAll('.xq-poster, .xq-a').forEach(el => el.classList.add('show'));
+  $('.q-time', body).classList.add('stop');
+  $('.q-sc', body).textContent = pts$(z.score);
+  $('.q-res', body).innerHTML = msg;
+  $('[data-next]', body).classList.remove('hidden');
+  $('[data-next]', body).focus({ preventScroll: true });
+}
+
+function xEnd() {
+  const z = xq, g = z.g, G = XG[g], n = z.res.length;
+  const best = z.score > (gstat['xb_' + g] || 0) && gstat['x_' + g] > 0;
+  gstat['x_' + g] = (gstat['x_' + g] || 0) + 1;
+  gstat['xb_' + g] = Math.max(gstat['xb_' + g] || 0, z.score);
+  saveG();
+  gBody().innerHTML = `<div class="q-end">
+      <div class="t-crown">${z.right >= 8 ? '🏅' : z.right >= 5 ? G.e : '🍿'}</div>
+      <small class="t-eyebrow">${best ? '🎉 Новый рекорд!' : `Рекорд: ${gstat['xb_' + g]}`}</small>
+      <div class="q-big"><b class="v">${z.score}</b><em>${plural(z.score, 'очко', 'очка', 'очков')}</em></div>
+      <div class="r-meta">${G.name} · угадано ${z.right} из ${n}</div>
+      <div class="q-list">${z.res.map(x => `<button class="q-li ${x.ok ? 'ok' : 'bad'}" data-id="${esc(x.m.id)}">
+        <div class="q-lf xq-lp">${posterHTML(x.m, false)}</div>
+        <span><b>${esc(x.m.title)}</b><small>${x.m.year || ''}</small></span><i>${x.pts ? '+' + x.pts : '✗'}</i></button>`).join('')}</div>
+      <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button><button class="btn accent" data-again>🔁 Ещё раз</button></div>
+    </div>`;
+  const body = gBody();
+  $$('.q-li', body).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
+  $('[data-again]', body).onclick = () => xStart(g);
+  $('[data-back]', body).onclick = gamesHub;
+  xq = null;
+}
+
+/* ---------- лимит игр в Telegram: 15 бесплатных раундов в день, дальше — Kinora+ или пакет раундов за звёзды ---------- */
+// работает, только когда у Telegram-версии есть сервер оплаты (KinoraTG.payOn); в Kinora.exe, APK и на сайте игры без лимита
+const FREE_DAY = 15;
+let prem = null;   // { sub: до какого момента Kinora+, cr: купленные раунды, price } — с сервера
+const tgPay = () => !!(window.KinoraTG && KinoraTG.payOn);
+const premOn = () => !!(prem && prem.sub > Date.now());
+const playUsed = () => { const p = load('kc_play', {}); return p.d === dayKey() ? p.n || 0 : 0; };
+async function premRefresh() {
+  if (!tgPay()) return prem;
+  try { prem = await KinoraTG.api('status'); } catch { }
+  return prem;
+}
+async function playGate(resume) {
+  if (!tgPay()) return true;
+  if (!prem) await premRefresh();
+  // сервер оплаты не ответил — не наказываем игрока, играем без лимита
+  if (!prem) return true;
+  if (premOn()) return true;
+  const n = playUsed();
+  if (n < FREE_DAY) { keep('kc_play', { d: dayKey(), n: n + 1 }); return true; }
+  if (prem && prem.cr > 0) {
+    try { const r = await KinoraTG.api('spend'); prem = r; if (r.ok) return true; } catch { }
+  }
+  paywall(resume);
+  return false;
+}
+function playLine() {
+  if (!tgPay()) return '';
+  if (premOn()) return `<div class="g-lim prem"><span>⭐ Kinora+ — игры без ограничений до ${new Date(prem.sub).toLocaleDateString('ru-RU')}</span></div>`;
+  const left = Math.max(0, FREE_DAY - playUsed());
+  return `<div class="g-lim"><span>Бесплатных раундов сегодня: <b>${left} из ${FREE_DAY}</b>${prem && prem.cr ? ` · купленных: <b>${prem.cr}</b>` : ''}</span><button class="btn sm" data-paywall>⭐ Больше</button></div>`;
+}
+function wirePlayLine() {
+  const b = $('[data-paywall]', gBody());
+  if (b) b.onclick = () => paywall(null);
+}
+function paywall(resume) {
+  const pr = (prem && prem.price) || { sub: 75, pack: 15, packN: 15 };
+  gBody().innerHTML = `<div class="pw"><div class="t-crown">⭐</div>
+    <h2>${resume ? 'Бесплатные раунды на сегодня закончились' : 'Играть без ограничений'}</h2>
+    <div class="r-sub">Каждый день — ${FREE_DAY} бесплатных раундов во всех викторинах, завтра будут новые. Турнир фильмов бесплатный всегда.</div>
+    <div class="pw-opts">
+      <button class="pw-o best" data-buy="sub"><b>Kinora+ на месяц</b><span>Все викторины без ограничений. Продлевается раз в месяц, отменить можно в любой момент: Telegram → Настройки → Мои звёзды</span><em>${pr.sub} ⭐</em></button>
+      <button class="pw-o" data-buy="pack"><b>+${pr.packN} раундов</b><span>Не сгорают, тратятся, когда кончатся бесплатные</span><em>${pr.pack} ⭐</em></button>
+    </div>
+    <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button></div></div>`;
+  const body = gBody();
+  $('[data-back]', body).onclick = gamesHub;
+  $$('[data-buy]', body).forEach(b => b.onclick = async () => {
+    $$('[data-buy]', body).forEach(x => x.disabled = true);
+    let st = 'failed';
+    try { st = await KinoraTG.buy(b.dataset.buy); } catch { }
+    if (st === 'paid') {
+      // оплата доходит до сервера через Telegram за секунду-другую
+      const was = JSON.stringify(prem);
+      for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 1200)); await premRefresh(); if (JSON.stringify(prem) !== was) break; }
+      toast(b.dataset.buy === 'sub' ? '⭐ Kinora+ подключена — играйте сколько хотите!' : `⭐ Добавлено ${pr.packN} раундов`);
+      if (resume && gamesM.classList.contains('open')) resume(); else gamesHub();
+      return;
+    }
+    if (st === 'failed') toast('⚠ Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз', 'warn');
+    $$('[data-buy]', body).forEach(x => x.disabled = false);
+  });
+}
+
 document.addEventListener('keydown', e => {
   if (!gamesM.classList.contains('open') || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
   if (e.key === 'Escape') { closeGames(); return; }
   if (tn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); tournPick(e.key === 'ArrowLeft' ? 0 : 1); }
+  if (xq && !xq.done && xq.opts && /^[1-4]$/.test(e.key)) { const b = $(`.q-opt[data-k="${+e.key - 1}"]`, gamesM); if (b && !b.disabled) xAnswer(+e.key - 1); }
+  if (xq && !xq.done && !xq.opts && e.key === 'Enter') { e.preventDefault(); xAnswer(+$('.xq-range', gamesM).value); }
   if (qz && !qz.done && /^[1-4]$/.test(e.key)) { const b = $(`.q-opt[data-k="${+e.key - 1}"]`, gamesM); if (b && !b.disabled) quizAnswer(+e.key - 1); }
 });
 

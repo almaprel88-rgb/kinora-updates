@@ -11,7 +11,9 @@
   const inTg = /tgWebAppData=/.test(location.hash + location.search);
   if (!inTg) return;
 
-  const SYNC = { kc_ratings: 'r', kc_custom: 'my', kc_colls: 'col', kc_ach: 'ach', kc_games: 'gm', kc_tourn: 'tr', kc_rec_hide: 'rh' };
+  const SYNC = { kc_ratings: 'r', kc_custom: 'my', kc_colls: 'col', kc_ach: 'ach', kc_games: 'gm', kc_tourn: 'tr', kc_rec_hide: 'rh', kc_play: 'pl' };
+  // сервер оплаты звёздами (tools/server/kinora_pay.py) есть только на своём сервере; с GitHub Pages игры без лимита
+  const API = location.hostname === 'kinora.murcon.pw' ? '/api/' : '';
   const CHUNK = 3800;
   const ls = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -157,5 +159,19 @@
       show ? wa.BackButton.show() : wa.BackButton.hide();
     },
     get user() { return wa && wa.initDataUnsafe && wa.initDataUnsafe.user; },
+    // оплата: лимит игр включается, только когда сервер оплаты доступен
+    get payOn() { return !!(API && wa && wa.initData && wa.openInvoice && wa.isVersionAtLeast && wa.isVersionAtLeast('6.1')); },
+    async api(path, extra = {}) {
+      const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: wa.initData, ...extra }) });
+      const j = await r.json();
+      if (!r.ok && !('cr' in j)) throw new Error(j.error || r.status);
+      return j;
+    },
+    // открывает окно оплаты Telegram; результат — 'paid', 'cancelled', 'failed' или 'pending'
+    async buy(product) {
+      const { link } = await this.api('invoice', { product });
+      if (!link) return 'failed';
+      return new Promise(res => wa.openInvoice(link, st => res(st)));
+    },
   };
 })();
