@@ -125,6 +125,16 @@
       try { wa.setHeaderColor(c); wa.setBackgroundColor(c); if (wa.setBottomBarColor) wa.setBottomBarColor(c); } catch { }
     };
     paint();
+    // во весь экран сверху кнопки Telegram («Закрыть», «⋯») и вырез экрана — приложение отступает на их высоту
+    const insets = () => {
+      const a = wa.safeAreaInset, c = wa.contentSafeAreaInset;
+      if (!a && !c) return;
+      const st = document.documentElement.style;
+      st.setProperty('--sat', ((a && a.top) || 0) + ((c && c.top) || 0) + 'px');
+      st.setProperty('--sab', ((a && a.bottom) || 0) + ((c && c.bottom) || 0) + 'px');
+    };
+    insets();
+    ['safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged', 'viewportChanged'].forEach(ev => { try { wa.onEvent(ev, insets); } catch { } });
     new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     // «Назад»: история страницы та же, что и в браузере, кнопка Telegram просто её листает
     if (wa.BackButton) wa.BackButton.onClick(() => history.back());
