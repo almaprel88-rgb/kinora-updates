@@ -1821,6 +1821,43 @@ body.cols3 .dens-btn .d3 { display: block; }
   .rec-intro { padding: 14px 16px; }
 }
 
+/* ---------- любимые режиссёры и актёры ---------- */
+.pp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 36px; }
+.pp-col { min-width: 0; }
+.pp-col h4 { margin: 0 0 8px; font: 650 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.pp-row {
+  display: grid; grid-template-columns: 22px 62px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%;
+  padding: 7px 8px 7px 2px; border-radius: 10px; text-align: left; color: var(--text); transition: background .2s;
+  animation: fadeUp .45s var(--ease) both;
+}
+.pp-row:hover { background: var(--card2); }
+.pp-rk { font: 700 17px var(--display); color: var(--dim); text-align: center; }
+.pp-row:nth-child(2) .pp-rk { color: var(--t1); }
+.pp-ph { position: relative; display: flex; height: 46px; }
+.pp-ph img {
+  width: 31px; height: 46px; object-fit: cover; border-radius: 4px; background: var(--card3);
+  box-shadow: 0 0 0 2px var(--card), 0 4px 10px -4px rgba(0, 0, 0, .6); transition: transform .25s var(--ease);
+}
+.pp-ph img + img { margin-left: -16px; }
+.pp-ph img:nth-child(1) { z-index: 3; }
+.pp-ph img:nth-child(2) { z-index: 2; transform: scale(.92); }
+.pp-ph img:nth-child(3) { z-index: 1; transform: scale(.84); }
+.pp-row:hover .pp-ph img:nth-child(2) { transform: translateX(6px) scale(.92); }
+.pp-row:hover .pp-ph img:nth-child(3) { transform: translateX(12px) scale(.84); }
+.pp-nm { min-width: 0; font: 650 14.5px/1.25 var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-nm small { display: block; margin-top: 2px; font: 12px var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.pp-sc {
+  min-width: 44px; padding: 4px 8px; border-radius: 8px; text-align: center; font: 700 15px var(--display); font-variant-numeric: tabular-nums;
+  color: var(--t1); background: color-mix(in srgb, var(--t1) 13%, transparent);
+}
+:root[data-theme="light"] .pp-sc { color: color-mix(in srgb, var(--t1) 60%, #000); background: color-mix(in srgb, var(--t1) 22%, transparent); }
+:root[data-theme="light"] .pp-ph img { box-shadow: 0 0 0 2px #fff, 0 4px 10px -5px rgba(24, 28, 70, .35); }
+@media (max-width: 760px) { .pp-grid { grid-template-columns: 1fr; gap: 18px; } }
+@media (max-width: 640px) {
+  .pp-row { grid-template-columns: 18px 56px minmax(0, 1fr) auto; gap: 10px; }
+  .pp-nm { font-size: 14px; }
+}
+
 /* ---------- карта «Кино со всего мира» ---------- */
 /* шкала идёт по фирменному градиенту: фиолетовый → синий → голубой, светлее с каждой ступенью */
 .map-p {

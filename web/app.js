@@ -1777,6 +1777,8 @@ function renderStats() {
       <div class="tn">${t.name}</div><div class="ts">${fmt(x.s)}</div></div>`;
   }).join('')}</div></div>`;
 
+  html += peoplePanel(430, rated, avg);
+
   // страны: сколько оценено и средняя оценка; клик — каталог этой страны
   const byCountry = {};
   rated.forEach(x => (x.m.country || []).forEach(c => (byCountry[c] = byCountry[c] || []).push(x.s)));
@@ -1794,7 +1796,39 @@ function renderStats() {
   wireYear(st);
   wireMap(st);
   $$('.crow', st).forEach(rw => rw.onclick = () => goCountry(rw.dataset.country));
+  $$('.pp-row', st).forEach(rw => rw.onclick = () => showPerson(rw.dataset.person));
   requestAnimationFrame(() => requestAnimationFrame(() => $$('.fil', st).forEach(f => f.style[f.closest('.mo-bar') ? 'height' : 'width'] = f.dataset.w + '%')));
+}
+
+/* ---------- любимые режиссёры и актёры: по средней оценке, а не по числу фильмов ---------- */
+// у кого один-два фильма, среднее подтягивается к вашей общей средней — иначе наверх вылезет любой случайный 10 из 10
+const PP_K = 1.5;
+function peopleTop(rated, avg, names, minN) {
+  const by = {};
+  rated.forEach(x => new Set(names(x.m)).forEach(p => p && (by[p] = by[p] || []).push(x)));
+  return Object.entries(by).filter(([, l]) => l.length >= minN).map(([p, l]) => {
+    const sum = l.reduce((a, x) => a + x.s, 0);
+    l.sort((a, b) => b.s - a.s);
+    return { p, l, a: sum / l.length, r: (sum + avg * PP_K) / (l.length + PP_K) };
+  }).sort((a, b) => b.r - a.r || b.l.length - a.l.length).slice(0, 7);
+}
+
+function peoplePanel(delay, rated, avg) {
+  const dirs = peopleTop(rated, avg, m => (m.director || '').split(/\s*,\s*/), 2);
+  // актёры — только первые четыре в титрах, чтобы считались главные роли
+  const acts = peopleTop(rated, avg, m => m.actors.slice(0, 4), 2);
+  const col = (title, list, empty) => `<div class="pp-col"><h4>${title}</h4>${list.length ? list.map((x, i) => {
+    const t = TIERS[tierIdx(x.a)], n = x.l.length, best = x.l[0].m;
+    return `<button class="pp-row" data-person="${esc(x.p)}" style="--t1:${t.c1};animation-delay:${delay + 40 + i * 35}ms" title="Все фильмы: ${esc(x.p)}">
+      <span class="pp-rk">${i + 1}</span>
+      <span class="pp-ph">${x.l.slice(0, 3).map(y => `<img src="${purl(y.m)}" loading="lazy" decoding="async" alt="">`).join('')}</span>
+      <span class="pp-nm">${esc(x.p)}<small>${n} ${plural(n, 'фильм', 'фильма', 'фильмов')} · лучший: ${esc(best.title)}</small></span>
+      <b class="pp-sc">${fmt(x.a)}</b></button>`;
+  }).join('') : `<div class="nodata">${empty}</div>`}</div>`;
+  return `<div class="panel span4 pp-p" style="animation-delay:${delay}ms">
+    <h3 title="Порядок — по средней оценке с поправкой на число фильмов: у кого их больше, тому больше доверия">Любимые режиссёры и актёры <small>средняя оценка, от двух фильмов; чем больше фильмов, тем выше доверие</small></h3>
+    <div class="pp-grid">${col('Режиссёры', dirs, 'Оцените хотя бы два фильма одного режиссёра')}${col('Актёры', acts, 'Оцените хотя бы два фильма с одним актёром')}</div>
+  </div>`;
 }
 
 /* ---------- время в кино и итоги года ---------- */
