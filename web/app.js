@@ -132,6 +132,15 @@ function cleanMovie(m) {
   MOVIE_ARR.forEach(k => { o[k] = Array.isArray(m[k]) ? m[k].filter(x => typeof x === 'string' || typeof x === 'number').map(String) : []; });
   return o;
 }
+// свои фильмы с этого же устройства (загрузка, автокопия): ничего не выбрасываем — иначе пропало бы при
+// следующем сохранении; только числа приводим к числам и списки к спискам
+function fixOwnMovie(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m) || m.id == null) return null;
+  const o = { ...m };
+  MOVIE_NUM.forEach(k => { if (k in o) { const v = Number(o[k]); if (Number.isFinite(v)) o[k] = v; else delete o[k]; } });
+  MOVIE_ARR.forEach(k => { if (!Array.isArray(o[k])) o[k] = o[k] == null ? [] : [String(o[k])]; });
+  return o;
+}
 function cleanRating(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
   const o = { scores: {}, manual: 0, comment: '', favorite: false };
@@ -2346,6 +2355,13 @@ function openSettings() {
   settingsM.classList.add('open');
 }
 function closeSettings() { settingsM.classList.remove('open'); }
+function snapsHTML() {
+  const snaps = load('kc_snaps', []);
+  if (!Array.isArray(snaps) || !snaps.length) return '';
+  return `<section class="s-sec"><h4>Автокопии на этом устройстве</h4>
+    <p class="s-note">Снимок делается раз в день при первом запуске. Если после обновления или по ошибке что-то пропало — верните вчерашнее состояние.</p>
+    <div class="snaps">${snaps.map((s, i) => `<div class="snap"><span><b>${esc(s.day)}</b> · ${s.n} ${plural(s.n, 'запись', 'записи', 'записей')}</span><button class="btn sm" data-snap="${i}">Вернуть</button></div>`).join('')}</div></section>`;
+}
 function renderSettings() {
   const body = $('.s-body', settingsM);
   if (!body) return;
@@ -2355,9 +2371,11 @@ function renderSettings() {
       <button data-theme-set="dark" class="${theme === 'dark' ? 'on' : ''}">🌙 Тёмная</button><button data-theme-set="light" class="${theme === 'light' ? 'on' : ''}">☀️ Светлая</button></div></section>
     <section class="s-sec">${accentPanel()}</section>
     <section class="s-sec">${backupPanel()}</section>
+    ${snapsHTML()}
     <section class="s-sec"><h4>Справка</h4><button class="btn" data-s="tour">Пройти экскурсию по Kinora</button></section>`;
   $$('[data-theme-set]', body).forEach(b => b.onclick = e => { setTheme(b.dataset.themeSet, e); setTimeout(renderSettings, 50); });
   $('[data-s="tour"]', body).onclick = () => { closeSettings(); startTour(); };
+  $$('[data-snap]', body).forEach(b => b.onclick = () => restoreSnapshot(+b.dataset.snap));
   wireBackup(body);
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && settingsM.classList.contains('open')) closeSettings(); });
@@ -2420,6 +2438,41 @@ function exportBackup() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast('💾 Файл с оценками сохранён в «Загрузки»');
   backupDone();
+}
+
+// снимки данных прямо на устройстве: по одному на день, последние 3 дня. Делаются при запуске — до того,
+// как новая версия что-то изменит, — так что после любого обновления можно вернуть вчерашнее состояние
+function snapshot() {
+  try {
+    const n = Object.keys(S.ratings).length, mine = S.movies.filter(m => m.custom);
+    if (!n && !S.colls.length && !mine.length) return;   // пустое не кладём поверх хорошего
+    let snaps = load('kc_snaps', []);
+    if (!Array.isArray(snaps)) snaps = [];
+    const day = dayKey();
+    if (snaps[0] && snaps[0].day === day) return;        // сегодняшний уже есть — он самый ранний за день
+    snaps.unshift({ day, at: new Date().toISOString(), n, ratings: S.ratings,
+      custom: mine.map(({ custom, _hay, ...m }) => m), collections: S.colls });
+    snaps = snaps.slice(0, 3);
+    // места мало — оставляем хотя бы самый свежий
+    try { localStorage.setItem('kc_snaps', JSON.stringify(snaps)); }
+    catch { try { localStorage.setItem('kc_snaps', JSON.stringify(snaps.slice(0, 1))); } catch { } }
+  } catch { }
+}
+function restoreSnapshot(i) {
+  const s = (load('kc_snaps', []) || [])[i];
+  if (!s) return;
+  if (!confirm(`Вернуть оценки, списки и коллекции к состоянию на ${s.day}?\nЗаписей в снимке: ${s.n}. Изменения после этой даты пропадут.`)) return;
+  S.ratings = {};
+  Object.entries(s.ratings || {}).forEach(([k, r]) => { const c = cleanRating(r); if (c) S.ratings[String(k)] = c; });
+  const ids = new Set(S.movies.filter(m => !m.custom).map(m => m.id));
+  S.movies = S.movies.filter(m => !m.custom).concat((s.custom || []).map(fixOwnMovie).filter(m => m && !ids.has(m.id)).map(m => ({ ...m, title: m.title || m.id, custom: true })));
+  S.colls = (s.collections || []).filter(c => c && c.id && Array.isArray(c.ids));
+  saveRatings(); saveCustom(); saveColls();
+  S.movies.forEach(m => { const c = cards.get(m.id); if (c) badges(c, m); });
+  tasteCache = null; recsDirty = true;
+  buildGenres(); buildCountry(); buildYears(); renderMoods(); render();
+  closeSettings();
+  toast(`✅ Восстановлено состояние на ${s.day}`);
 }
 
 // на телефоне (APK) — тихая автокопия раз в неделю в «Загрузки/Kinora»; в браузере так нельзя — там напоминание
@@ -3744,7 +3797,9 @@ async function init() {
       for (const [k, v] of saved) localPosters[k] = v;
     } catch { }
   }
-  custom = (Array.isArray(custom) ? custom : []).map(cleanMovie).filter(Boolean);
+  // свои фильмы с устройства — ничего не выбрасываем (иначе пропало бы при следующем сохранении),
+  // только числа приводим к числам и списки к спискам; строгая проверка — лишь при загрузке чужого файла
+  custom = (Array.isArray(custom) ? custom : []).map(fixOwnMovie).filter(Boolean);
   custom.forEach(m => m.custom = true);
   S.movies = [...base, ...custom].filter(m => m && m.id).map(m => ({
     ...m, title: m.title || m.orig || m.id, genres: m.genres || [], actors: m.actors || [],
@@ -3878,6 +3933,7 @@ async function init() {
 
   // первый запуск: плашка с предложением экскурсии; потом её можно вызвать кнопкой «?»
   if (!load('kc_tour', 0)) { $('#setBtn').classList.add('new'); $('#moreBtn').classList.add('new'); setTimeout(showHelpTip, 1400); }
+  snapshot();
   setTimeout(backupCheck, 5000);
 }
 
