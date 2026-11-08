@@ -2,8 +2,8 @@
 // Kinora без интернета. Код и список фильмов: сначала сеть, а без сети берутся из кэша.
 // Постеры: сначала кэш, чтобы каталог открывался быстро и офлайн.
 // При изменении состава файлов увеличьте номер версии.
-const SHELL = 'kinora-shell-v2', POSTERS = 'kinora-posters-v1';
-const FILES = ['./index.html', './app.css', './app.js', './world.js', './manifest.webmanifest',
+const SHELL = 'kinora-shell-v3', POSTERS = 'kinora-posters-v1';
+const FILES = ['./index.html', './app.css', './app.js', './tg.js', './world.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable.png', '../data/movies.json'];
 
 self.addEventListener('install', e => {

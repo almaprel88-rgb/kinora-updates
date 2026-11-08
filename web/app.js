@@ -107,7 +107,7 @@ function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) || d; } c
 const KEEP_VITAL = new Set(['kc_ratings', 'kc_custom', 'kc_colls']);
 let keepWarned = false;
 function keep(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+  try { localStorage.setItem(k, JSON.stringify(v)); if (window.KinoraTG) KinoraTG.changed(k); return true; }
   catch {
     if (KEEP_VITAL.has(k) && !keepWarned) {
       keepWarned = true;
@@ -2397,7 +2397,7 @@ function backupAge() {
 function backupPanel() {
   const age = backupAge(), old = !host && age.days > 14;
   return `<div class="panel span4 backup"><h3>Резервная копия</h3>
-    <p class="nodata">Оценки, заметки, списки и коллекции хранятся только на этом устройстве. Сохраните их в файл, чтобы не потерять или перенести на другой телефон или компьютер. Загрузить можно и файл <b>ratings.json</b> из папки Kinora на компьютере.${droid ? ' Раз в неделю копия сохраняется в «Загрузки/Kinora» сама.' : ''}</p>
+    <p class="nodata">${window.KinoraTG ? 'В Telegram оценки, списки и коллекции сохраняются в облаке Telegram и одинаковы на всех ваших устройствах. Файл копии нужен, чтобы перенести их в Kinora на компьютере или телефоне.' : 'Оценки, заметки, списки и коллекции хранятся только на этом устройстве.'} Сохраните их в файл, чтобы не потерять или перенести на другой телефон или компьютер. Загрузить можно и файл <b>ratings.json</b> из папки Kinora на компьютере.${droid ? ' Раз в неделю копия сохраняется в «Загрузки/Kinora» сама.' : ''}</p>
     ${host ? '' : `<p class="bk-age${old ? ' old' : ''}">Последняя копия: <b>${age.text}</b></p>`}
     <div class="bk-acts"><button class="btn accent" data-bk="export">Сохранить в файл</button><button class="btn" data-bk="import">Загрузить из файла</button>
     ${offlineReady() ? '<button class="btn" data-bk="offline">Скачать постеры для работы без интернета</button>' : ''}</div></div>`;
@@ -2478,7 +2478,8 @@ function restoreSnapshot(i) {
 // на телефоне (APK) — тихая автокопия раз в неделю в «Загрузки/Kinora»; в браузере так нельзя — там напоминание
 // раз в две недели. На компьютере оценки и так лежат файлом в папке Kinora.
 function backupCheck() {
-  if (host || Object.keys(S.ratings).length < 3) return;
+  // в Telegram оценки и так лежат в облаке Telegram
+  if (host || window.KinoraTG || Object.keys(S.ratings).length < 3) return;
   const age = backupAge();
   if (droid && age.days >= 7) {
     try {
@@ -3738,6 +3739,7 @@ function setupBackButton() {
   const sync = () => {
     if (stack.length && !held) { history.pushState({ kinora: 1 }, ''); held = true; }
     else if (!stack.length && held && !fromPop) { held = false; history.back(); }
+    if (window.KinoraTG) KinoraTG.back(stack.length > 0);
   };
   const mo = new MutationObserver(recs => {
     recs.forEach(r => {
@@ -3778,6 +3780,15 @@ function setupSwipe() {
 
 /* ================= запуск ================= */
 async function init() {
+  // в Telegram сначала забираем оценки из облака Telegram (tg.js), потом перечитываем то, что прочитано до этого
+  if (window.KinoraTG) {
+    await KinoraTG.ready;
+    achSeen = load('kc_ach', null);
+    recHidden.clear(); load('kc_rec_hide', []).forEach(x => recHidden.add(x));
+    Object.assign(gstat, load('kc_games', {}));
+    tourHist = load('kc_tourn', []);
+    document.documentElement.dataset.theme = load('kc_theme', document.documentElement.dataset.theme);
+  }
   const get = async (u, d) => {
     try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : d; } catch { return d; }
   };
@@ -3808,7 +3819,7 @@ async function init() {
   if (!SORTS.some(s => s[0] === S.sort) || S.sort === 'mood') S.sort = 'title';
 
   // демо-оценки для проверки вида в обычном браузере (в приложении не используются)
-  if (!host && location.hash.includes('demo')) {
+  if (!host && !window.KinoraTG && location.hash.includes('demo')) {
     S.movies.filter(m => !isSeries(m)).slice(0, 40).forEach((m, i) => {
       const v = [10, 9, 8, 7, 9, 6, 5, 4, 8, 3, 2, 9, 7, 6][i % 14];
       // даты просмотров по месяцам года — для итогов года и графиков
