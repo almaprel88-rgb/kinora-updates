@@ -2163,7 +2163,7 @@ body.cols3 .dens-btn .d3 { display: block; }
 :root[data-theme="light"] .q-opt.right em { color: #fff; background: #1fb487; }
 :root[data-theme="light"] .q-res .ok, :root[data-theme="light"] .q-li.ok i { color: #12996f; }
 @media (max-width: 640px) {
-  .games { padding: calc(24px + var(--sat)) var(--pad) calc(32px + var(--sab)); }
+  .games { width: 100%; padding: calc(24px + var(--sat)) var(--pad) calc(32px + var(--sab)); }
   .g-hub { grid-template-columns: 1fr; gap: 10px; margin-top: 16px; }
   .g-card { min-height: 0; padding: 16px 18px; }
   .t-src { grid-template-columns: 1fr; gap: 8px; }
