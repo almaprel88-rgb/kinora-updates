@@ -102,7 +102,52 @@ const norm = s => String(s).toLowerCase().replace(/ё/g, 'е');
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
 function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } }
-function keep(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
+// оценки, свои фильмы и коллекции на телефоне живут только здесь — если запись не прошла (память переполнена),
+// об этом надо сказать, а не молча потерять изменения
+const KEEP_VITAL = new Set(['kc_ratings', 'kc_custom', 'kc_colls']);
+let keepWarned = false;
+function keep(k, v) {
+  try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+  catch {
+    if (KEEP_VITAL.has(k) && !keepWarned) {
+      keepWarned = true;
+      setTimeout(() => toast('⚠ Не удалось сохранить изменения на устройстве — память переполнена. Сохраните резервную копию в «Статистике»', 'warn'), 0);
+    }
+    return false;
+  }
+}
+
+/* ---------- проверка данных из файлов: чужая или испорченная копия не должна ломать приложение ---------- */
+const MOVIE_STR = ['id', 'title', 'orig', 'director', 'desc', 'kp', 'imdbId', 'wiki', 'ivi', 'ruwiki', 'okko'];
+const MOVIE_NUM = ['year', 'imdb', 'imdbVotes', 'min', 'frame'];
+const MOVIE_ARR = ['genres', 'actors', 'country', 'mood'];
+function cleanMovie(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m) || m.id == null || !String(m.id).trim()) return null;
+  const o = {};
+  // неизвестные простые поля не теряем (иначе они пропали бы при следующем сохранении); известные ниже приводятся к типу
+  for (const [k, v] of Object.entries(m)) if (['string', 'number', 'boolean'].includes(typeof v)) o[k] = v;
+  MOVIE_NUM.forEach(k => delete o[k]);
+  MOVIE_STR.forEach(k => { if (m[k] != null && typeof m[k] !== 'object') o[k] = String(m[k]).slice(0, 5000); });
+  MOVIE_NUM.forEach(k => { const v = Number(m[k]); if (m[k] != null && m[k] !== '' && Number.isFinite(v)) o[k] = v; });
+  MOVIE_ARR.forEach(k => { o[k] = Array.isArray(m[k]) ? m[k].filter(x => typeof x === 'string' || typeof x === 'number').map(String) : []; });
+  return o;
+}
+function cleanRating(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const o = { scores: {}, manual: 0, comment: '', favorite: false };
+  // неизвестные простые поля (на будущее) сохраняем как есть — они нигде не выводятся
+  for (const [k, v] of Object.entries(r)) if (['string', 'number', 'boolean'].includes(typeof v)) o[k] = v;
+  const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
+  o.scores = {};
+  if (r.scores && typeof r.scores === 'object') for (const [k, v] of Object.entries(r.scores)) { const n = num(v, 0, 10); if (n != null) o.scores[String(k)] = n; }
+  o.manual = num(r.manual, 0, 10) || 0;
+  o.comment = typeof r.comment === 'string' ? r.comment.slice(0, 20000) : '';
+  ['favorite', 'watch', 'done'].forEach(k => { if (k in o) o[k] = !!r[k]; });
+  if (Array.isArray(r.views)) o.views = r.views.filter(v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v));
+  if ('seasons' in o) { const s = num(r.seasons, 0, 1000); if (s) o.seasons = Math.floor(s); else delete o.seasons; }
+  ['updated', 'ratedAt'].forEach(k => { if (k in o && (typeof o[k] !== 'string' || isNaN(Date.parse(o[k])))) delete o[k]; });
+  return o;
+}
 
 /* ================= связь с приложением ================= */
 const host = window.chrome && window.chrome.webview;
@@ -685,7 +730,23 @@ function showHero(i) {
   }, 10000);
 }
 
-const VIEW_TITLES = { all: 'Каталог', fav: 'Избранное', watch: 'Смотреть позже', mine: 'Мои находки', coll: 'Коллекции', stats: 'Статистика' };
+const VIEW_TITLES = { all: 'Каталог', fav: 'Мои списки', watch: 'Мои списки', mine: 'Мои списки', coll: 'Коллекции', stats: 'Статистика' };
+// «Избранное», «Смотреть позже» и «Мои находки» — одна вкладка «Мои списки» с переключателем
+const LIST_VIEWS = [['fav', '♥ Избранное', '♥ Избранное'], ['watch', '🔖 Смотреть позже', '🔖 На потом'], ['mine', '✦ Мои находки', '✦ Находки']];
+const isListView = v => LIST_VIEWS.some(([k]) => k === v);
+let listSub = load('kc_list', 'fav');
+function paintListSeg() {
+  const seg = $('#listSeg'), on = isListView(S.view);
+  seg.classList.toggle('hidden', !on);
+  if (!on) return;
+  const n = { fav: 0, watch: 0, mine: 0 };
+  for (const m of S.movies) { const r = R(m.id); if (r && r.favorite) n.fav++; if (r && r.watch) n.watch++; if (m.custom) n.mine++; }
+  seg.innerHTML = LIST_VIEWS.map(([k, name, short]) => `<button role="tab" data-list="${k}" class="${S.view === k ? 'on' : ''}" aria-selected="${S.view === k}"><span class="ls-full">${name}</span><span class="ls-short">${short}</span><small>${n[k]}</small></button>`).join('');
+  $$('button', seg).forEach(b => b.onclick = () => {
+    S.view = listSub = b.dataset.list; keep('kc_list', listSub);
+    render();
+  });
+}
 
 // фильм без года проходит только при полном диапазоне
 const yearsAll = () => S.y1 <= S.yMin && S.y2 >= S.yMax;
@@ -706,6 +767,7 @@ function render() {
   document.body.className = 'v-' + S.view + (document.body.classList.contains('cols3') ? ' cols3' : '');
   const mood = S.view === 'all' && S.mood ? MOOD[S.mood] : null;
   $('#sectTitle').textContent = coll ? coll.name : mood ? `${mood.e} ${mood.name}` : VIEW_TITLES[S.view];
+  paintListSeg();
   $('#counter').classList.toggle('hidden', noGrid);
   $('#hero').classList.toggle('hidden', S.view !== 'all');
   $('#moods').classList.toggle('hidden', S.view !== 'all');
@@ -997,10 +1059,7 @@ function syncMobileFilters() {
 
 // меню «Ещё»: добавить фильм, тема, экскурсия
 const moreSheet = $('#moreSheet');
-$('#moreBtn').onclick = () => {
-  $('#moreTheme').textContent = document.documentElement.dataset.theme === 'light' ? 'Тёмная тема' : 'Светлая тема';
-  moreSheet.classList.add('open');
-};
+$('#moreBtn').onclick = () => moreSheet.classList.add('open');
 moreSheet.addEventListener('click', e => {
   const b = e.target.closest('[data-more]');
   if (!b && !e.target.closest('.msheet-scrim')) return;
@@ -1008,8 +1067,7 @@ moreSheet.addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.more === 'games') openGames();
   else if (b.dataset.more === 'add') openEditor(null);
-  else if (b.dataset.more === 'theme') setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
-  else startTour();
+  else if (b.dataset.more === 'settings') openSettings();
 });
 
 function buildImdb() {
@@ -1727,20 +1785,35 @@ function openEditor(m) {
 }
 
 /* ================= статистика ================= */
+// статистика разбита на вкладки — раньше было ~15 панелей одной лентой
+const STAT_TABS = [['overview', 'Обзор'], ['people', 'Люди и страны'], ['time', 'Время'], ['ach', 'Достижения']];
+let statTab = load('kc_stat_tab', 'overview');
+const statTabsHTML = () => `<div class="span4 st-tabs" role="tablist">${STAT_TABS.map(([k, n]) =>
+  `<button role="tab" data-st="${k}" class="${statTab === k ? 'on' : ''}" aria-selected="${statTab === k}">${n}</button>`).join('')}</div>`;
+function wireStatTabs(st) {
+  $$('[data-st]', st).forEach(b => b.onclick = () => {
+    statTab = b.dataset.st; keep('kc_stat_tab', statTab);
+    renderStats();
+    const top = st.getBoundingClientRect().top + window.scrollY - 90;
+    if (window.scrollY > top) window.scrollTo({ top, behavior: calm ? 'auto' : 'smooth' });
+  });
+}
+
 function renderStats() {
   const st = $('#stats');
+  if (!STAT_TABS.some(([k]) => k === statTab)) statTab = 'overview';
   const rated = S.movies.map(m => ({ m, r: R(m.id), s: ov(m) })).filter(x => x.s >= 0);
   const favs = S.movies.filter(m => R(m.id) && R(m.id).favorite).length;
   const avg = rated.length ? rated.reduce((a, x) => a + x.s, 0) / rated.length : -1;
   const tile = (v, l, i) => `<div class="panel tile" style="animation-delay:${i * 60}ms"><div class="v">${v}</div><div class="l">${l}</div></div>`;
-  let html = tile(S.movies.length, 'фильмов в базе', 0) + tile(rated.length, 'оценено', 1) +
+  const tiles = tile(S.movies.length, 'фильмов в базе', 0) + tile(rated.length, 'оценено', 1) +
     tile(avg >= 0 ? avg.toFixed(1) : '—', 'средняя оценка', 2) + tile(favs, 'в избранном', 3);
-  html += yearBanner(180);
+  let html = tiles + yearBanner(180);
 
   if (!rated.length) {
     html += `<div class="panel span4"><div class="nodata">Пока нет ни одной оценки. Откройте любой фильм и проставьте баллы по критериям — здесь появятся графики и ваш личный топ.</div></div>`;
-    st.innerHTML = html + monthsPanel(260, 'span4') + achPanel(300) + accentPanel() + backupPanel();
-    wireBackup(st);
+    st.innerHTML = html + monthsPanel(260, 'span4') + achPanel(300) + settingsLink();
+    wireSettingsLink(st);
     countUp(st);
     requestAnimationFrame(() => requestAnimationFrame(() => $$('.fil', st).forEach(f => f.style[f.closest('.mo-bar') ? 'height' : 'width'] = f.dataset.w + '%')));
     return;
@@ -1751,6 +1824,7 @@ function renderStats() {
   const counts = TIERS.map((t, i) => rated.filter(x => tierIdx(x.s) === i).length);
   let acc = 0;
   const stops = TIERS.map((t, i) => { const a = acc; acc += counts[i] / rated.length * 100; return `${t.c1} ${a}% ${acc}%`; }).join(',');
+  html = '';
   html += `<div class="panel span2" style="animation-delay:240ms"><h3>Распределение по категориям</h3><div class="donut-wrap">
       <div class="donut" style="background:conic-gradient(${stops})"><b>${rated.length}</b></div>
       <div class="legend">${TIERS.map((t, i) => `<div style="--c1:${t.c1};--c2:${t.c2}"><i></i>${t.name}<span>${counts[i]}</span></div>`).join('')}</div>
@@ -1777,20 +1851,26 @@ function renderStats() {
       <div class="tn">${t.name}</div><div class="ts">${fmt(x.s)}</div></div>`;
   }).join('')}</div></div>`;
 
-  html += peoplePanel(430, rated, avg);
+  const overview = tiles + yearBanner(180) + html;
+  html = peoplePanel(60, rated, avg);
 
   // страны: сколько оценено и средняя оценка; клик — каталог этой страны
   const byCountry = {};
   rated.forEach(x => (x.m.country || []).forEach(c => (byCountry[c] = byCountry[c] || []).push(x.s)));
   const cl = Object.entries(byCountry).map(([c, v]) => ({ c, a: v.reduce((p, q) => p + q, 0) / v.length, n: v.length }))
     .sort((a, b) => b.n - a.n || b.a - a.a).slice(0, 10);
-  html += `<div class="panel span2" style="animation-delay:440ms"><h3>Страны <small>по числу оценок</small></h3>${cl.length
+  html += `<div class="panel span2" style="animation-delay:120ms"><h3>Страны <small>по числу оценок</small></h3>${cl.length
     ? cl.map(x => `<div class="crow" data-country="${esc(x.c)}" title="Показать фильмы: ${esc(x.c)}">${bar(`${x.c} (${x.n})`, x.a, 10, TIERS[tierIdx(x.a)], x.a.toFixed(1))}</div>`).join('')
     : '<div class="nodata">У оценённых фильмов не указана страна</div>'}</div>`;
-  html += monthsPanel(460, 'span2') + timePanel(480) + mapPanel(490, rated);
+  // html сейчас: люди, затем страны — карту ставим между ними во всю ширину
+  const cut = html.indexOf('<div class="panel span2" style="animation-delay:120ms"><h3>Страны');
+  const people = html.slice(0, cut) + mapPanel(100, rated) + html.slice(cut);
+  const time = monthsPanel(60, 'span4') + timePanel(120);
+  const body = { overview, people, time, ach: achPanel(60) }[statTab];
 
-  st.innerHTML = html + achPanel(500) + accentPanel() + backupPanel();
-  wireBackup(st);
+  st.innerHTML = statTabsHTML() + body + (statTab === 'overview' ? settingsLink() : '');
+  wireStatTabs(st);
+  wireSettingsLink(st);
   countUp(st);
   $$('.trow', st).forEach(rw => rw.onclick = () => { S.list = top.map(x => x.m); openDetail(S.movies.find(m => m.id === rw.dataset.id), $('.th', rw)); });
   wireYear(st);
@@ -2256,11 +2336,51 @@ function achPanel(delay) {
       </div>`).join('')}</div></div>`;
 }
 
+/* ================= настройки: тема, цвет, резервная копия, экскурсия ================= */
+// раньше это жило в конце «Статистики», где его никто не находил
+const settingsM = $('#settings');
+function openSettings() {
+  settingsM.innerHTML = `<div class="backdrop"></div><div class="sheet roul settings-s"><button class="x" title="Закрыть (Esc)">✕</button><div class="s-body"></div></div>`;
+  $('.x', settingsM).onclick = $('.backdrop', settingsM).onclick = closeSettings;
+  renderSettings();
+  settingsM.classList.add('open');
+}
+function closeSettings() { settingsM.classList.remove('open'); }
+function renderSettings() {
+  const body = $('.s-body', settingsM);
+  if (!body) return;
+  const theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  body.innerHTML = `<h2>Настройки</h2>
+    <section class="s-sec"><h4>Тема</h4><div class="s-seg">
+      <button data-theme-set="dark" class="${theme === 'dark' ? 'on' : ''}">🌙 Тёмная</button><button data-theme-set="light" class="${theme === 'light' ? 'on' : ''}">☀️ Светлая</button></div></section>
+    <section class="s-sec">${accentPanel()}</section>
+    <section class="s-sec">${backupPanel()}</section>
+    <section class="s-sec"><h4>Справка</h4><button class="btn" data-s="tour">Пройти экскурсию по Kinora</button></section>`;
+  $$('[data-theme-set]', body).forEach(b => b.onclick = e => { setTheme(b.dataset.themeSet, e); setTimeout(renderSettings, 50); });
+  $('[data-s="tour"]', body).onclick = () => { closeSettings(); startTour(); };
+  wireBackup(body);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && settingsM.classList.contains('open')) closeSettings(); });
+function settingsLink() {
+  return `<div class="panel span4 s-link"><span>Тема, цвет оформления и резервная копия оценок — в настройках</span>
+    <button class="btn" data-open-settings>⚙ Настройки</button></div>`;
+}
+function wireSettingsLink(root) { const b = $('[data-open-settings]', root); if (b) b.onclick = () => openSettings(); }
+
 /* ================= резервная копия ================= */
 const offlineReady = () => !host && 'caches' in window && navigator.serviceWorker && navigator.serviceWorker.controller;
+// когда последний раз сохраняли копию: «сегодня», «3 дня назад», «ещё ни разу»
+function backupAge() {
+  const at = load('kc_backup_at', null), t = at && Date.parse(at);
+  if (!t) return { days: Infinity, text: 'ещё ни разу' };
+  const days = Math.floor((Date.now() - t) / 864e5);
+  return { days, text: days < 1 ? 'сегодня' : days === 1 ? 'вчера' : `${days} ${plural(days, 'день', 'дня', 'дней')} назад` };
+}
 function backupPanel() {
+  const age = backupAge(), old = !host && age.days > 14;
   return `<div class="panel span4 backup"><h3>Резервная копия</h3>
-    <p class="nodata">Оценки, заметки, списки и коллекции хранятся только на этом устройстве. Сохраните их в файл, чтобы не потерять или перенести на другой телефон или компьютер. Загрузить можно и файл <b>ratings.json</b> из папки Kinora на компьютере.</p>
+    <p class="nodata">Оценки, заметки, списки и коллекции хранятся только на этом устройстве. Сохраните их в файл, чтобы не потерять или перенести на другой телефон или компьютер. Загрузить можно и файл <b>ratings.json</b> из папки Kinora на компьютере.${droid ? ' Раз в неделю копия сохраняется в «Загрузки/Kinora» сама.' : ''}</p>
+    ${host ? '' : `<p class="bk-age${old ? ' old' : ''}">Последняя копия: <b>${age.text}</b></p>`}
     <div class="bk-acts"><button class="btn accent" data-bk="export">Сохранить в файл</button><button class="btn" data-bk="import">Загрузить из файла</button>
     ${offlineReady() ? '<button class="btn" data-bk="offline">Скачать постеры для работы без интернета</button>' : ''}</div></div>`;
 }
@@ -2275,24 +2395,52 @@ function wireBackup(root) {
   if (off) off.onclick = () => cacheAllPosters(off);
 }
 
-function exportBackup() {
-  const data = {
+function backupData() {
+  return JSON.stringify({
     app: 'kinora', version: 1, saved: new Date().toISOString(), ratings: S.ratings,
     custom: S.movies.filter(m => m.custom).map(({ custom, _hay, ...m }) => m),
     collections: S.colls,
-  };
-  const name = `kinora-оценки-${new Date().toISOString().slice(0, 10)}.json`;
+  }, null, 1);
+}
+const backupDone = () => { keep('kc_backup_at', new Date().toISOString()); if (settingsM.classList.contains('open')) renderSettings(); };
+
+function exportBackup() {
+  const data = backupData();
+  const name = `kinora-оценки-${dayKey()}.json`;
   if (droid) {
-    const err = droid.saveFile(name, 'application/json', JSON.stringify(data, null, 1));
+    const err = droid.saveFile(name, 'application/json', data);
     toast(err ? '⚠ ' + err : '💾 Файл с оценками сохранён в «Загрузки/Kinora»');
+    if (!err) backupDone();
     return;
   }
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
   a.download = name;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast('💾 Файл с оценками сохранён в «Загрузки»');
+  backupDone();
+}
+
+// на телефоне (APK) — тихая автокопия раз в неделю в «Загрузки/Kinora»; в браузере так нельзя — там напоминание
+// раз в две недели. На компьютере оценки и так лежат файлом в папке Kinora.
+function backupCheck() {
+  if (host || Object.keys(S.ratings).length < 3) return;
+  const age = backupAge();
+  if (droid && age.days >= 7) {
+    try {
+      const err = droid.saveFile(`kinora-автокопия-${dayKey()}.json`, 'application/json', backupData());
+      if (!err) { backupDone(); toast('💾 Автокопия оценок сохранена в «Загрузки/Kinora»'); return; }
+    } catch { }
+  }
+  if (age.days < 14 || load('kc_backup_nag', '') === dayKey()) return;
+  keep('kc_backup_nag', dayKey());
+  const t = document.createElement('div');
+  t.className = 'toast warn bk-nag';
+  t.innerHTML = `<span>Резервная копия оценок: <b>${esc(age.text)}</b>. Сохраните файл, чтобы не потерять оценки.</span><button class="btn accent">Сохранить</button>`;
+  $('button', t).onclick = () => { exportBackup(); t.remove(); };
+  $('#toasts').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 12000);
 }
 
 // принимает и свою резервную копию, и ratings.json из Windows-версии
@@ -2304,13 +2452,15 @@ async function importBackup() {
   const full = d && d.app === 'kinora';
   const ratings = full ? d.ratings : d;
   if (!ratings || typeof ratings !== 'object' || Array.isArray(ratings)) { toast('⚠ Это не файл с оценками Kinora'); return; }
-  const entries = Object.entries(ratings).filter(([, r]) => r && typeof r === 'object');
+  // каждая запись проверяется: числа — числами, текст — текстом, лишнее отбрасывается
+  const entries = Object.entries(ratings).map(([k, r]) => [String(k), cleanRating(r)]).filter(([, r]) => r);
+  if (!entries.length) { toast('⚠ В файле нет оценок Kinora'); return; }
   if (!confirm(`Загрузить записей: ${entries.length}?\nОценки к тем же фильмам на этом устройстве заменятся, остальные останутся.`)) return;
   const ids = new Set(S.movies.map(m => m.id));
-  (full && Array.isArray(d.custom) ? d.custom : []).forEach(m => {
-    if (m && m.id && !ids.has(m.id)) S.movies.push({ ...m, title: m.title || m.id, genres: m.genres || [], actors: m.actors || [], custom: true });
+  (full && Array.isArray(d.custom) ? d.custom : []).map(cleanMovie).forEach(m => {
+    if (m && !ids.has(m.id)) S.movies.push({ ...m, title: m.title || m.id, custom: true });
   });
-  entries.forEach(([k, r]) => S.ratings[k] = { scores: {}, manual: 0, comment: '', favorite: false, ...r });
+  entries.forEach(([k, r]) => S.ratings[k] = r);
   // коллекции из копии: с тем же id заменяются, новые добавляются
   (full && Array.isArray(d.collections) ? d.collections : []).forEach(c => {
     if (!c || !c.id || !Array.isArray(c.ids)) return;
@@ -2647,7 +2797,7 @@ function mapPanel(delay, rated) {
       <rect class="w-sea" x="-500" y="-500" width="${WORLD.w + 1000}" height="${WORLD.h + 1000}" fill="url(#wSea)"/>
       <path d="${mapGrid()}" class="w-grid"/><g class="w-land"><path d="${WORLD.rest}" class="w-rest"/>${shapes}${dots}</g></svg>
       <div class="w-zoom"><button data-z="1.6" title="Приблизить" aria-label="Приблизить">+</button><button data-z="0.625" title="Отдалить" aria-label="Отдалить">−</button></div>
-      <div class="w-hint">Ctrl + колесо — приблизить</div><div class="w-tip"></div></div>
+      <div class="w-hint">Ctrl + колесо — приблизить</div><div class="w-empty"></div><div class="w-tip"></div></div>
     <div class="w-foot"><div class="w-leg"><span>${max > 1 ? 1 : 'меньше'}</span><i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><i data-l="5"></i><span>${max > 1 ? max + ' ' + plural(max, 'фильм', 'фильма', 'фильмов') : 'больше'}</span></div>
       ${next.length ? `<div class="w-next"><span>Куда отправиться дальше:</span>${next.map(([c, n]) => `<button data-country="${esc(c)}" title="${n} ${plural(n, 'фильм', 'фильма', 'фильмов')} с IMDb 7+">${esc(c)}</button>`).join('')}</div>` : ''}</div>
   </div>`;
@@ -2710,11 +2860,35 @@ function wireMap(root) {
     go({ x: px - fx * w, y: py - fy * w * H / W, w }, now);
     setReg(w >= W - 1 ? 'world' : null);
   };
+  // часть света без единой оценки — не немая пустая карта, а пояснение
+  const emptyEl = $('.w-empty', wrap);
+  let emptyT = 0;
+  const hideEmpty = () => { clearTimeout(emptyT); emptyEl.classList.remove('on'); };
   $$('.w-regs button', root).forEach(b => b.onclick = () => {
-    const [, , x, y, w] = MAP_REGIONS.find(r => r[0] === b.dataset.reg);
+    const [k, name, x, y, w] = MAP_REGIONS.find(r => r[0] === b.dataset.reg);
     go({ x, y, w });
-    setReg(b.dataset.reg);
+    setReg(k);
+    hideEmpty();
+    if (k === 'world') return;
+    const h = w * H / W;
+    // есть ли оценённая страна в кадре: рамки мало (у Франции она тянется до Гвианы) — проверяем точки самого контура
+    const any = $$('.w-c:not([data-l="0"])', svg).some(el => {
+      const bb = el.getBBox();
+      const x0 = Math.max(bb.x, x), x1 = Math.min(bb.x + bb.width, x + w), y0 = Math.max(bb.y, y), y1 = Math.min(bb.y + bb.height, y + h);
+      if (x1 <= x0 || y1 <= y0) return false;
+      if (el.tagName === 'circle' || !el.isPointInFill) return true;
+      for (let i = 0; i <= 14; i++) for (let j = 0; j <= 14; j++) {
+        const p = svg.createSVGPoint(); p.x = x0 + (x1 - x0) * i / 14; p.y = y0 + (y1 - y0) * j / 14;
+        if (el.isPointInFill(p)) return true;
+      }
+      return false;
+    });
+    if (any) return;
+    emptyEl.innerHTML = `<b>${esc(name)}: пока ни одного фильма</b>Оцените фильм отсюда — и страна загорится на карте`;
+    emptyEl.classList.add('on');
+    emptyT = setTimeout(hideEmpty, 4500);
   });
+  svg.addEventListener('pointerdown', hideEmpty);
   $$('.w-zoom button', wrap).forEach(b => b.onclick = () => zoomAt(+b.dataset.z));
 
   // колесо: приближает с Ctrl или когда карта уже приближена, иначе страница прокручивается как обычно
@@ -3393,21 +3567,21 @@ function toast(text, cls) {
   t.className = 'toast' + (cls ? ' ' + cls : '');
   t.textContent = text;
   $('#toasts').appendChild(t);
-  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, cls === 'ach' ? 4200 : 2200);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, cls === 'ach' ? 4200 : cls === 'warn' ? 6000 : 2200);
 }
 
 /* ================= знакомство: плашка и экскурсия ================= */
 // экскурсия подсвечивает элемент и рассказывает, что он делает; шаги без своего элемента на экране пропускаются
 const TOUR = [
   { sel: '.search', t: 'Поиск', d: 'Ищет по названию, режиссёру, актёрам, стране и году. На компьютере — <b>Ctrl + K</b>.' },
-  { sel: '#tabs', t: 'Разделы', d: '<b>Каталог</b> — все фильмы, <b>Избранное</b> и <b>«Смотреть позже»</b> — ваши списки, <b>Коллекции</b> — свои подборки, <b>Статистика</b> — графики и достижения.' },
+  { sel: '#tabs', t: 'Разделы', d: '<b>Каталог</b> — все фильмы, <b>Мои списки</b> — избранное, «Смотреть позже» и ваши находки, <b>Коллекции</b> — свои подборки, <b>Статистика</b> — графики и достижения.' },
   { sel: '#rouletteBtn', t: 'Что посмотреть?', d: 'Не можете выбрать — крутите рулетку. Она учитывает выбранные жанр, страну и годы.' },
   { sel: '#addBtn, #moreBtn', t: 'Свой фильм', d: 'Нужного фильма нет? Вставьте ссылку на Кинопоиск, IMDb или Википедию — остальное заполнится само.' },
   { sel: '#filters .tb-row, #mBar', t: 'Фильтры', d: 'Категории по <b>вашей</b> оценке, рейтинг IMDb, страна и сортировка.' },
   { sel: '.genres-wrap, #mBar .genres-box', t: 'Жанры и годы', d: 'Лента жанров листается вбок, ползунок сужает годы выхода.' },
   { sel: '#grid .card', t: 'Окно фильма', d: 'Нажмите на постер: оценка по 7 критериям, заметки, где смотреть, отметки просмотров и кнопка <b>«В коллекцию»</b>.' },
   { sel: '#tabs [data-view="coll"]', t: 'Коллекции', d: 'Собирайте подборки: «На Новый год», «Весь Нолан», «С друзьями». Создать коллекцию можно здесь или прямо в окне фильма.' },
-  { sel: '#helpBtn, #moreBtn', t: 'Подсказка всегда здесь', d: 'Экскурсию можно пройти ещё раз в любой момент. Приятного просмотра!' },
+  { sel: '#setBtn, #moreBtn', t: 'Настройки', d: 'Тема, цвет оформления, резервная копия оценок и эта экскурсия — здесь. Приятного просмотра!' },
 ];
 const tourEl = $('#tour'), helpTip = $('#helpTip');
 let tourI = 0;
@@ -3468,25 +3642,25 @@ function showHelpTip() {
     <b>👋 Впервые в Kinora?</b><span>Покажу за минуту, где что находится.</span>
     <div class="ht-acts"><button class="btn sm accent" data-h="go">Показать</button><button class="btn sm" data-h="no">Не сейчас</button></div>`;
   $('[data-h="go"]', helpTip).onclick = startTour;
-  $('[data-h="no"]', helpTip).onclick = $('.ht-x', helpTip).onclick = () => { hideHelpTip(); toast('Экскурсия — по кнопке «?» вверху'); };
+  $('[data-h="no"]', helpTip).onclick = $('.ht-x', helpTip).onclick = () => { hideHelpTip(); toast(phoneMQ.matches ? 'Экскурсия — в «Ещё» → «Настройки»' : 'Экскурсия — в настройках (⚙ вверху)'); };
   helpTip.classList.add('open');
   placeHelpTip();
 }
 function hideHelpTip() {
   helpTip.classList.remove('open');
-  $('#helpBtn').classList.remove('new'); $('#moreBtn').classList.remove('new');
+  $('#setBtn').classList.remove('new'); $('#moreBtn').classList.remove('new');
   keep('kc_tour', 1);
 }
 function placeHelpTip() {
   if (!helpTip.classList.contains('open')) return;
-  const b = (phoneMQ.matches ? $('#moreBtn') : $('#helpBtn')).getBoundingClientRect(), vw = document.documentElement.clientWidth, w = helpTip.offsetWidth;
+  const b = (phoneMQ.matches ? $('#moreBtn') : $('#setBtn')).getBoundingClientRect(), vw = document.documentElement.clientWidth, w = helpTip.offsetWidth;
   const left = Math.min(Math.max(12, b.left + b.width / 2 - w / 2), vw - w - 12);
   Object.assign(helpTip.style, { top: b.bottom + 12 + 'px', left: left + 'px' });
   helpTip.style.setProperty('--ax', b.left + b.width / 2 - left + 'px');
 }
 // человек занялся другим — плашка уходит, не мешая; точка на «?» остаётся, а при следующем запуске плашка появится снова
 document.addEventListener('click', e => {
-  if (helpTip.classList.contains('open') && !e.target.closest('#helpTip, #helpBtn')) helpTip.classList.remove('open');
+  if (helpTip.classList.contains('open') && !e.target.closest('#helpTip, #setBtn')) helpTip.classList.remove('open');
 }, true);
 window.addEventListener('resize', () => { placeTour(); placeHelpTip(); });
 window.addEventListener('scroll', placeTour, { passive: true });
@@ -3497,7 +3671,7 @@ function setupBackButton() {
   const closers = new Map([
     [detail, () => closeDetail()], [roul, () => closeRoulette()], [gamesM, () => closeGames()],
     [editor, () => editor.classList.remove('open')], [shareM, () => shareM.classList.remove('open')],
-    [tourEl, () => endTour()],
+    [tourEl, () => endTour()], [$('#settings'), () => closeSettings()],
     [$('#yearM'), () => closeYear()],
     // «Назад» на телефоне закрывает и открытое меню фильтра
     ...$$('.dd').map(d => [d, () => d.classList.remove('open')]),
@@ -3558,7 +3732,7 @@ async function init() {
   // адрес сервера обновлений — оттуда подгружаются постеры, которых нет на устройстве
   const upd = await get('../data/update.json', null);
   remoteBase = upd && upd.base ? upd.base.replace(/\/?$/, '/') : null;
-  const custom = host ? await get('../data/my_movies.json', []) : load('kc_custom', []);
+  let custom = host ? await get('../data/my_movies.json', []) : load('kc_custom', []);
   S.ratings = host ? await get('../data/ratings.json', {}) : load('kc_ratings', {});
   const fileColls = host ? await get('../data/collections.json', null) : null;
   S.colls = (Array.isArray(fileColls) ? fileColls : load('kc_colls', []))
@@ -3570,6 +3744,7 @@ async function init() {
       for (const [k, v] of saved) localPosters[k] = v;
     } catch { }
   }
+  custom = (Array.isArray(custom) ? custom : []).map(cleanMovie).filter(Boolean);
   custom.forEach(m => m.custom = true);
   S.movies = [...base, ...custom].filter(m => m && m.id).map(m => ({
     ...m, title: m.title || m.orig || m.id, genres: m.genres || [], actors: m.actors || [],
@@ -3622,7 +3797,7 @@ async function init() {
   $$('#tabs button').forEach(b => b.onclick = () => {
     $$('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     moveTabInd();
-    S.view = b.dataset.view;
+    S.view = b.dataset.view === 'lists' ? (isListView(listSub) ? listSub : 'fav') : b.dataset.view;
     // вкладка «Коллекции» всегда открывает их список
     if (S.view === 'coll') S.coll = null;
     render();
@@ -3635,13 +3810,20 @@ async function init() {
     render();
   }, 140));
   $('#addBtn').onclick = () => openEditor(null);
-  // кнопка «Наверх» появляется, когда каталог пролистан далеко
+  // кнопка «Наверх»: только когда страница пролистана далеко и вы листаете обратно вверх —
+  // пока читаете вниз, она спрятана и не закрывает оценки и кнопки у правого края
   const up = $('#upBtn');
-  window.addEventListener('scroll', () => up.classList.toggle('on', window.scrollY > 1600), { passive: true });
+  let lastY = window.scrollY;
+  window.addEventListener('scroll', () => {
+    const y = window.scrollY, dy = y - lastY;
+    if (Math.abs(dy) < 6) return;
+    up.classList.toggle('on', y > 1600 && dy < 0);
+    lastY = y;
+  }, { passive: true });
   up.onclick = () => window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
   $('#rouletteBtn').onclick = openRoulette;
   $('#gamesBtn').onclick = () => openGames();
-  $('#helpBtn').onclick = startTour;
+  $('#setBtn').onclick = () => openSettings();
   $('#themeBtn').onclick = e => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', e);
   rowNav($('#moodsRow')); rowNav($('#recsRow'));
   // колесо мыши прокручивает ленту жанров по горизонтали
@@ -3684,14 +3866,19 @@ async function init() {
   if (!host && !droid && 'serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
 
   const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get('view')) { const b = $(`#tabs button[data-view="${h.get('view')}"]`); if (b) b.click(); }
+  if (h.get('view')) {
+    const v = h.get('view');
+    if (isListView(v)) listSub = v;
+    const b = $(`#tabs button[data-view="${isListView(v) ? 'lists' : v}"]`); if (b) b.click();
+  }
   if (h.get('coll') && S.colls.some(c => c.id === h.get('coll'))) { S.coll = h.get('coll'); render(); }
   if (h.get('open')) openDetail(S.movies.find(m => m.id === h.get('open')));
   if (h.get('games')) openGames(h.get('games'));
   if (h.get('year')) { openYear(h.get('year'), +h.get('slide') || 0); if (h.get('hold')) ysPause(true); }
 
   // первый запуск: плашка с предложением экскурсии; потом её можно вызвать кнопкой «?»
-  if (!load('kc_tour', 0)) { $('#helpBtn').classList.add('new'); $('#moreBtn').classList.add('new'); setTimeout(showHelpTip, 1400); }
+  if (!load('kc_tour', 0)) { $('#setBtn').classList.add('new'); $('#moreBtn').classList.add('new'); setTimeout(showHelpTip, 1400); }
+  setTimeout(backupCheck, 5000);
 }
 
 init();
