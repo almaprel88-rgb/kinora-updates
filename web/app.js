@@ -315,6 +315,7 @@ const isEmpty = r => overall(r) < 0 && !(r.comment || '').trim() && !r.favorite 
 
 const saveRatings = debounce(async () => {
   for (const [k, r] of Object.entries(S.ratings)) if (isEmpty(r)) delete S.ratings[k];
+  if (window.KinoraSync) KinoraSync.dirty();
   if (!host) { keep('kc_ratings', S.ratings); return; }
   const res = await call('save', { file: 'ratings', data: JSON.stringify(S.ratings, null, 1) });
   if (!res.ok) toast('⚠ Не удалось сохранить: ' + (res.error || ''));
@@ -330,6 +331,7 @@ function touch(r) {
 
 function saveCustom() {
   const data = S.movies.filter(m => m.custom).map(({ custom, _hay, ...m }) => m);
+  if (window.KinoraSync) KinoraSync.dirty();
   if (!host) { keep('kc_custom', data); return; }
   call('save', { file: 'my_movies', data: JSON.stringify(data, null, 1) });
 }
@@ -340,6 +342,7 @@ const collsOf = m => S.colls.filter(c => c.ids.includes(m.id));
 // копия в localStorage есть всегда: если файл не записался (старый Kinora.exe), коллекции не пропадут
 const saveColls = debounce(async () => {
   keep('kc_colls', S.colls);
+  if (window.KinoraSync) KinoraSync.dirty();
   if (!host) return;
   const res = await call('save', { file: 'collections', data: JSON.stringify(S.colls, null, 1) });
   if (!res.ok) toast('⚠ Не удалось сохранить коллекции: ' + (res.error || ''));
@@ -2374,7 +2377,9 @@ function renderSettings() {
   body.innerHTML = `<h2>Настройки</h2>
     <section class="s-sec"><h4>Тема</h4><div class="s-seg">
       <button data-theme-set="dark" class="${theme === 'dark' ? 'on' : ''}">🌙 Тёмная</button><button data-theme-set="light" class="${theme === 'light' ? 'on' : ''}">☀️ Светлая</button></div></section>
+    ${window.KinoraSync ? KinoraSync.html() : ''}
     <section class="s-sec">${accentPanel()}</section>
+    ${window.KinoraTG ? KinoraTG.settingsHTML() : ''}
     <section class="s-sec">${backupPanel()}</section>
     ${snapsHTML()}
     <section class="s-sec"><h4>Справка</h4><button class="btn" data-s="tour">Пройти экскурсию по Kinora</button></section>`;
@@ -2382,6 +2387,8 @@ function renderSettings() {
   $('[data-s="tour"]', body).onclick = () => { closeSettings(); startTour(); };
   $$('[data-snap]', body).forEach(b => b.onclick = () => restoreSnapshot(+b.dataset.snap));
   wireBackup(body);
+  if (window.KinoraSync) KinoraSync.wire(body);
+  if (window.KinoraTG) KinoraTG.wireSettings(body);
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && settingsM.classList.contains('open')) closeSettings(); });
 function settingsLink() {
@@ -2508,13 +2515,17 @@ async function importBackup() {
   if (!f) return;
   let d;
   try { d = JSON.parse(await f.text()); } catch { d = null; }
+  return importBackupData(d);
+}
+// null — файл не подошёл или от загрузки отказались, иначе число загруженных записей
+async function importBackupData(d) {
   const full = d && d.app === 'kinora';
   const ratings = full ? d.ratings : d;
-  if (!ratings || typeof ratings !== 'object' || Array.isArray(ratings)) { toast('⚠ Это не файл с оценками Kinora'); return; }
+  if (!ratings || typeof ratings !== 'object' || Array.isArray(ratings)) { toast('⚠ Это не файл с оценками Kinora'); return null; }
   // каждая запись проверяется: числа — числами, текст — текстом, лишнее отбрасывается
   const entries = Object.entries(ratings).map(([k, r]) => [String(k), cleanRating(r)]).filter(([, r]) => r);
-  if (!entries.length) { toast('⚠ В файле нет оценок Kinora'); return; }
-  if (!confirm(`Загрузить записей: ${entries.length}?\nОценки к тем же фильмам на этом устройстве заменятся, остальные останутся.`)) return;
+  if (!entries.length) { toast('⚠ В файле нет оценок Kinora'); return null; }
+  if (!confirm(`Загрузить записей: ${entries.length}?\nОценки к тем же фильмам на этом устройстве заменятся, остальные останутся.`)) return null;
   const ids = new Set(S.movies.map(m => m.id));
   (full && Array.isArray(d.custom) ? d.custom : []).map(cleanMovie).forEach(m => {
     if (m && !ids.has(m.id)) S.movies.push({ ...m, title: m.title || m.id, custom: true });
@@ -2529,10 +2540,15 @@ async function importBackup() {
   });
   saveRatings(); saveCustom(); saveColls();
   achSeen = achDone(); keep('kc_ach', achSeen);
+  kinoraRefresh();
+  toast(`✅ Загружено записей: ${entries.length}`);
+  return entries.length;
+}
+// оценки, свои фильмы или коллекции поменялись целиком (загрузка копии, синхронизация) — перерисовать всё
+function kinoraRefresh() {
   S.movies.forEach(m => { const c = cards.get(m.id); if (c) badges(c, m); });
   tasteCache = null; recsDirty = true;
   buildGenres(); buildCountry(); buildYears(); renderMoods(); render();
-  toast(`✅ Загружено записей: ${entries.length}`);
 }
 
 // постеры кэшируются по мере просмотра; эта кнопка скачивает сразу все
@@ -3092,10 +3108,11 @@ function gamesHub() {
         <small>${gstat.quiz ? `Рекорд: ${gstat.quizBest} ${plural(gstat.quizBest, 'очко', 'очка', 'очков')}` : 'Ещё не играли'}</small></button>
       ${Object.entries(XG).map(([k, G]) => `<button class="g-card" data-g="${k}" style="--c1:${G.c1};--c2:${G.c2}"><span class="g-e">${G.e}</span><b>${G.name}</b>
         <span>${G.about}</span><small>${gstat['x_' + k] ? `Рекорд: ${pts$(gstat['xb_' + k] || 0)}` : 'Ещё не играли'}</small></button>`).join('')}
+      ${window.KinoraTG ? KinoraTG.hubCards() : ''}
     </div>
     ${playLine()}
     ${champs.length ? `<div class="g-champs"><h4>Прошлые чемпионы</h4><div class="g-ch-row">${champs.map(m => `<button data-id="${esc(m.id)}" title="${esc(m.title)}">${posterHTML(m, false)}</button>`).join('')}</div></div>` : ''}`;
-  $$('[data-g]', gBody()).forEach(b => b.onclick = () => b.dataset.g === 'tourn' ? tournSetup() : b.dataset.g === 'quiz' ? quizSetup() : xSetup(b.dataset.g));
+  $$('[data-g]', gBody()).forEach(b => b.onclick = () => window.KinoraTG && KinoraTG.hubClick(b.dataset.g) ? null : b.dataset.g === 'tourn' ? tournSetup() : b.dataset.g === 'quiz' ? quizSetup() : xSetup(b.dataset.g));
   wirePlayLine();
   $$('.g-ch-row [data-id]', gBody()).forEach(b => b.onclick = () => gameOpenFilm(byId(b.dataset.id)));
 }
@@ -3584,7 +3601,7 @@ function paywall(resume) {
     <h2>${resume ? 'Бесплатные раунды на сегодня закончились' : 'Играть без ограничений'}</h2>
     <div class="r-sub">Каждый день — ${FREE_DAY} бесплатных раундов во всех викторинах, завтра будут новые. Турнир фильмов бесплатный всегда.</div>
     <div class="pw-opts">
-      <button class="pw-o best" data-buy="sub"><b>Kinora+ на месяц</b><span>Все викторины без ограничений. Продлевается раз в месяц, отменить можно в любой момент: Telegram → Настройки → Мои звёзды</span><em>${pr.sub} ⭐</em></button>
+      <button class="pw-o best" data-buy="sub"><b>Kinora+ на месяц</b><span>Все викторины без ограничений, сколько угодно комнат «Смотрим вместе» и цвета оформления Аврора, Неон и Платина. Продлевается раз в месяц, отменить можно в любой момент: Telegram → Настройки → Мои звёзды</span><em>${pr.sub} ⭐</em></button>
       <button class="pw-o" data-buy="pack"><b>+${pr.packN} раундов</b><span>Не сгорают, тратятся, когда кончатся бесплатные</span><em>${pr.pack} ⭐</em></button>
     </div>
     <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button></div></div>`;
@@ -3753,6 +3770,7 @@ async function openShare(m) {
   $('.sh-prev', shareM).innerHTML = `<img src="${url}" alt="">`;
   const name = `kinora — ${m.title}`;
   $$('[data-s]', shareM).forEach(b => b.disabled = false);
+  if (window.KinoraTG) KinoraTG.onShare(shareM, m, canvas);
   $('[data-s="save"]', shareM).onclick = async () => {
     if (droid) { const err = droid.saveFile(name + '.png', 'image/png', url); toast(err ? '⚠ ' + err : '🖼 Карточка сохранена в галерею'); return; }
     if (!host) { const a = document.createElement('a'); a.href = url; a.download = name + '.png'; a.click(); return; }
@@ -4189,6 +4207,9 @@ async function init() {
   if (!load('kc_tour', 0)) { $('#setBtn').classList.add('new'); $('#moreBtn').classList.add('new'); setTimeout(showHelpTip, 1400); }
   snapshot();
   setTimeout(backupCheck, 5000);
+  // вход через Telegram: синхронизация оценок (sync.js); в Telegram — ссылки из бота, файл от бота и т. п. (tg.js)
+  if (window.KinoraSync) KinoraSync.start();
+  if (window.KinoraTG) KinoraTG.started();
 }
 
 init();
