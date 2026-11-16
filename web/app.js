@@ -719,7 +719,7 @@ function showHero(i) {
   const s = ov(m);
   const t = $('#heroText');
   t.innerHTML = `<div class="eyebrow">${s >= 0 ? 'Вы оценили · ' + fmt(s) : 'В центре внимания'}</div>
-    <h1>${esc(m.title)}</h1>
+    <h1 class="${m.title.length > 40 ? 'xl' : m.title.length > 24 ? 'l' : ''}" title="${esc(m.title)}">${esc(m.title)}</h1>
     <div class="meta"><b>${m.year || ''}</b>${m.min ? '<i>●</i>' + runTxt(m) : ''}${m.genres.slice(0, 3).map(g => '<i>●</i>' + esc(g)).join('')}<i>●</i>реж. ${esc(m.director || '—')}</div>
     <p>${esc(m.desc || '')}</p>
     <div class="acts"><button class="btn grad" id="heroRate">Оценить фильм</button><button class="btn ghost" id="heroNext">Следующий →</button></div>`;
