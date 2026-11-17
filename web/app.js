@@ -1342,9 +1342,9 @@ function openDetail(m, from) {
           <div class="d-chips">${m.genres.map(g => `<span>${esc(g)}</span>`).join('')}</div>
           ${moodsOf(m).length ? `<div class="d-moods">${moodsOf(m).filter(id => MOOD[id]).slice(0, 5).map(id => `<button data-mood="${id}" style="--c1:${MOOD[id].c1};--c2:${MOOD[id].c2}" title="Открыть подборку">${MOOD[id].e} ${esc(MOOD[id].name)}</button>`).join('')}</div>` : ''}
           <dl class="d-info">
-            <dt>Режиссёр</dt><dd class="who">${personLinks(people(m.director))}</dd>
+            ${people(m.director).length ? `<dt>Режиссёр</dt><dd class="who">${personLinks(people(m.director))}</dd>` : ''}
             ${m.country && m.country.length ? `<dt>Страна</dt><dd>${m.country.map(esc).join(', ')}</dd>` : ''}
-            <dt>В ролях</dt><dd class="actors">${personLinks(m.actors)}</dd>
+            ${m.actors && m.actors.length ? `<dt>${m.genres.includes('Мультфильм') ? 'Роли озвучивали' : 'В ролях'}</dt><dd class="actors">${personLinks(m.actors)}</dd>` : ''}
           </dl>
           ${aboutHTML(m)}
           <div class="where"><span class="where-l">Где смотреть</span>${watchLinks(m)}</div>
@@ -4108,6 +4108,11 @@ async function init() {
   renderMoods();
   render();
   moveTabInd();
+  // панель вкладок меняет размер (поворот экрана, компактный режим в Telegram) — капля следует за кнопкой без задержки
+  if (window.ResizeObserver) new ResizeObserver(() => {
+    const ind = $('.tab-ind');
+    ind.style.transition = 'none'; moveTabInd(); ind.classList.remove('stretch'); void ind.offsetWidth; ind.style.transition = '';
+  }).observe($('#tabs'));
   pickHero();
   showHero(0);
   const top = $('.top');

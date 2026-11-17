@@ -117,6 +117,17 @@
   /* ---------- оформление и кнопки Telegram ---------- */
   function setupUi() {
     wa.ready();
+    document.documentElement.classList.add('tg');
+    // нижняя панель: при прокрутке вниз сжимается, при прокрутке вверх — раскрывается
+    let lastY = scrollY;
+    const root = document.documentElement;
+    addEventListener('scroll', () => {
+      const y = scrollY, dy = y - lastY;
+      if (Math.abs(dy) < 8) return;
+      lastY = y;
+      const want = dy > 0 && y > 140;
+      if (root.classList.contains('tg-compact') !== want) root.classList.toggle('tg-compact', want);
+    }, { passive: true });
     try { wa.expand(); } catch { }
     if (wa.isVersionAtLeast && wa.isVersionAtLeast('7.7')) try { wa.disableVerticalSwipes(); } catch { }
     // тема: пока её не выбрали в Kinora — как в Telegram
