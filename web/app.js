@@ -2016,7 +2016,7 @@ function yearBanner(delay) {
     <div class="yb-art">${list.slice(0, 5).map((x, i) => `<div class="yb-p" style="--i:${i}">${posterHTML(x.m, false)}</div>`).join('')}</div>
     <div class="yb-t"><small>Итоги года</small><h3>Мой ${y} в кино</h3>
       <p>${list.length} ${plural(list.length, 'фильм', 'фильма', 'фильмов')}${h ? ` · ${h} ${plural(h, 'час', 'часа', 'часов')}` : ''} — лучший фильм, любимый жанр, ваш тип зрителя и многое другое</p>
-      <div class="yb-acts"><button class="btn grad" data-year="${y}">Смотреть итоги ${yearLocked() ? '⭐' : '▶'}</button>
+      <div class="yb-acts"><button class="btn grad" data-year="${y}">Смотреть итоги ▶</button>
       ${years.slice(1).map(o => `<button class="btn ghost sm" data-year="${o}">${o}</button>`).join('')}</div></div></div>`;
 }
 
@@ -2154,7 +2154,6 @@ function openYear(y, start = 0) {
     <div class="ys-stage"></div>
     <button class="ys-nav prev" aria-label="Назад"></button><button class="ys-nav next" aria-label="Дальше"></button></div>`;
   yr = { slides, i: -1, left: YR_MS, paused: false, y };
-  if (tgPay() && !prem) premRefresh();   // узнать, оплачены ли итоги, пока идёт первый слайд
   yearM.classList.add('open');
   document.body.style.overflow = 'hidden';
   $('.ys-x', yearM).onclick = closeYear;
@@ -2169,47 +2168,10 @@ function openYear(y, start = 0) {
   ysGo(Math.min(start, slides.length - 1));
 }
 
-/* «Мой год в кино» в Telegram — платно: первый слайд бесплатно, дальше Kinora+ или покупка итогов навсегда.
-   В Kinora.exe, APK и на сайте итоги бесплатные; если сервер оплаты не ответил — тоже не блокируем */
-const yearLocked = () => tgPay() && !!prem && !premOn() && !(prem.unlocks || []).includes('year');
-function ysPaywall() {
-  clearTimeout(yr.timer);
-  const pr = (prem && prem.price) || { sub: 75, year: 29 };
-  const stage = $('.ys-stage', yearM);
-  $('.ys-wrap', yearM).dataset.bg = '4';
-  $('.ys-wrap', yearM).classList.add('final', 'paying');
-  $$('.ys-bars-top i', yearM).forEach((b, k) => { b.className = k < 1 ? 'done' : ''; });
-  stage.innerHTML = `<div class="ys-slide ys-pay"><div class="ys-crown">⭐</div>
-    <h2>Ваши итоги ${esc(yr.y)} года готовы</h2>
-    <p class="ys-pay-sub">Сколько фильмов и часов, любимые жанры, режиссёры и актёры, лучший фильм года и ваш тип зрителя — ещё ${yr.slides.length - 1} ${plural(yr.slides.length - 1, 'слайд', 'слайда', 'слайдов')}</p>
-    <div class="ys-pay-opts">
-      <button class="ys-po best" data-buy="year"><b>Открыть итоги навсегда</b><span>За все годы, один раз</span><em>${pr.year || 29} ⭐</em></button>
-      <button class="ys-po" data-buy="sub"><b>Kinora+ на месяц</b><span>Итоги года, викторины без лимита, «Смотрим вместе» и новые цвета</span><em>${pr.sub} ⭐</em></button>
-    </div>
-    <button class="ys-later" data-ys="close">Не сейчас</button></div>`;
-  $('[data-ys]', stage).onclick = e => { e.stopPropagation(); closeYear(); };
-  $$('[data-buy]', stage).forEach(b => b.onclick = async e => {
-    e.stopPropagation();
-    $$('[data-buy]', stage).forEach(x => x.disabled = true);
-    let st = 'failed';
-    try { st = await KinoraTG.buy(b.dataset.buy); } catch { }
-    if (st === 'paid') {
-      for (let k = 0; k < 6 && yearLocked(); k++) { await new Promise(r => setTimeout(r, 1200)); await premRefresh(); }
-      toast(b.dataset.buy === 'sub' ? '⭐ Kinora+ подключена — смотрите итоги!' : '⭐ Итоги года открыты навсегда');
-      if (yr) { $('.ys-wrap', yearM).classList.remove('final'); ysGo(1); }
-      return;
-    }
-    if (st === 'failed') toast('⚠ Не удалось открыть оплату. Проверьте интернет и попробуйте ещё раз', 'warn');
-    $$('[data-buy]', stage).forEach(x => x.disabled = false);
-  });
-}
-
 function ysGo(i) {
   if (!yr) return;
   if (i >= yr.slides.length) return;   // на последнем слайде остаёмся
   i = Math.max(0, i);
-  if (i >= 1 && yearLocked()) { yr.i = 0; ysPaywall(); return; }
-  $('.ys-wrap', yearM).classList.remove('paying');
   const s = yr.slides[i], stage = $('.ys-stage', yearM);
   yr.i = i; yr.left = YR_MS;
   $('.ys-wrap', yearM).dataset.bg = s.bg;
@@ -3663,7 +3625,7 @@ function paywall(resume) {
     <h2>${resume ? 'Бесплатные раунды на сегодня закончились' : 'Играть без ограничений'}</h2>
     <div class="r-sub">Каждый день — ${FREE_DAY} бесплатных раундов во всех викторинах, завтра будут новые. Турнир фильмов бесплатный всегда.</div>
     <div class="pw-opts">
-      <button class="pw-o best" data-buy="sub"><b>Kinora+ на месяц</b><span>Все викторины без ограничений, сколько угодно комнат «Смотрим вместе», итоги «Мой год в кино» и цвета оформления Аврора, Неон и Платина. Продлевается раз в месяц, отменить можно в любой момент: Telegram → Настройки → Мои звёзды</span><em>${pr.sub} ⭐</em></button>
+      <button class="pw-o best" data-buy="sub"><b>Kinora+ на месяц</b><span>Все викторины без ограничений, сколько угодно комнат «Смотрим вместе» и цвета оформления Аврора, Неон и Платина. Продлевается раз в месяц, отменить можно в любой момент: Telegram → Настройки → Мои звёзды</span><em>${pr.sub} ⭐</em></button>
       <button class="pw-o" data-buy="pack"><b>+${pr.packN} раундов</b><span>Не сгорают, тратятся, когда кончатся бесплатные</span><em>${pr.pack} ⭐</em></button>
     </div>
     <div class="r-foot"><button class="btn ghost" data-back>← Все игры</button></div></div>`;

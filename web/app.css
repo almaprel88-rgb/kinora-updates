@@ -2417,25 +2417,3 @@ body.cols3 .dens-btn .d3 { display: block; }
   :root.games-open #tabs { pointer-events: auto; }
   :root.games-open .games { padding-bottom: calc(100px + var(--sab)); }
 }
-
-/* ===== «Мой год в кино» в Telegram: оплата после первого слайда ===== */
-.ys-wrap.paying .ys-nav { display: none; }
-.ys-pay { gap: 14px; color: #fff; }
-.ys-pay h2 { margin: 0; font: 800 26px/1.15 var(--display, var(--sans)); letter-spacing: -.3px; max-width: 340px; }
-.ys-crown { font-size: 46px; filter: drop-shadow(0 6px 24px rgba(255, 200, 80, .55)); animation: ysIn .8s var(--ease) both, ysFloat 3.2s ease-in-out .8s infinite alternate; }
-@keyframes ysFloat { to { transform: translateY(-6px); } }
-.ys-pay-sub { margin: 0; max-width: 340px; color: rgba(255, 255, 255, .78); font-size: 14.5px; line-height: 1.55; }
-.ys-pay-opts { display: flex; flex-direction: column; gap: 10px; width: min(100%, 360px); margin-top: 8px; }
-.ys-po {
-  position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px; padding: 14px 16px; text-align: left;
-  border-radius: 18px; color: #fff; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .22);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: transform .2s var(--ease), background .2s;
-}
-.ys-po:active { transform: scale(.97); }
-.ys-po:disabled { opacity: .55; }
-.ys-po b { grid-column: 1; font-size: 15.5px; }
-.ys-po span { grid-column: 1; font-size: 12.5px; color: rgba(255, 255, 255, .72); line-height: 1.35; }
-.ys-po em { grid-column: 2; grid-row: 1 / 3; font-style: normal; font-weight: 800; font-size: 16px; padding: 7px 12px; border-radius: 12px; background: rgba(255, 255, 255, .16); white-space: nowrap; }
-.ys-po.best { background: linear-gradient(135deg, rgba(255, 196, 92, .32), rgba(255, 79, 154, .28)); border-color: rgba(255, 214, 140, .6); box-shadow: 0 10px 30px -10px rgba(255, 140, 90, .6); }
-.ys-po.best em { background: linear-gradient(135deg, #ffcf6b, #ff8a5c); color: #2a1300; }
-.ys-later { margin-top: 4px; padding: 8px 14px; color: rgba(255, 255, 255, .7); font-size: 14px; background: none; border: 0; }
