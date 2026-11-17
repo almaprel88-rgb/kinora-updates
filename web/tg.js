@@ -244,8 +244,8 @@
     const n = (st && st.notify) || {};
     const sw = (k, on, t, d) => `<label class="tg-sw"><span><b>${t}</b><small>${d}</small></span><input type="checkbox" data-tg-n="${k}" ${on ? 'checked' : ''}><i></i></label>`;
     return `<section class="s-sec tg-sec"><h4>Kinora+</h4>
-      ${subOn() ? `<p class="s-note">⭐ Подписка активна до <b>${new Date(st.sub).toLocaleDateString('ru-RU')}</b>: викторины без лимита, сколько угодно комнат «Смотрим вместе» и цвета Аврора, Неон и Платина.</p>`
-        : `<p class="s-note">Викторины без дневного лимита, сколько угодно комнат «Смотрим вместе» и эксклюзивные цвета оформления.</p><button class="btn accent" data-tg="plus">⭐ Подключить Kinora+</button>`}
+      ${subOn() ? `<p class="s-note">⭐ Подписка активна до <b>${new Date(st.sub).toLocaleDateString('ru-RU')}</b>: викторины без лимита, сколько угодно комнат «Смотрим вместе», итоги «Мой год в кино» и цвета Аврора, Неон и Платина.</p>`
+        : `<p class="s-note">Викторины без дневного лимита, сколько угодно комнат «Смотрим вместе», итоги «Мой год в кино» и эксклюзивные цвета оформления.</p><button class="btn accent" data-tg="plus">⭐ Подключить Kinora+</button>`}
     </section>
     <section class="s-sec tg-sec"><h4>Сообщения от бота</h4>
       ${sw('daily', n.daily, '☀️ Фильм дня', 'Каждое утро в 10:00 — хороший фильм, который вы ещё не оценили')}
