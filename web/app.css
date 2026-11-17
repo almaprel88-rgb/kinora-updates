@@ -2349,57 +2349,62 @@ body.cols3 .dens-btn .d3 { display: block; }
 .tg-ml h4 { margin: 0; color: var(--text); font-size: 16px; }
 .tg-ml .g-ch-row { justify-content: center; flex-wrap: wrap; }
 
-/* ===== Telegram: нижняя панель — прозрачное «стекло», плавная капля и компактный режим при прокрутке ===== */
+/* ===== Telegram: нижняя панель — широкая тонированная капсула, крупные значки, активная вкладка цветом и мягкой подложкой ===== */
 @media (max-width: 1000px) {
   :root.tg .tabs {
-    --gl-tint: rgba(var(--bg-rgb), .16); --gl-shine: rgba(255, 255, 255, .55); --gl-rim: rgba(255, 255, 255, .08);
-    width: min(calc(100% - 32px), 400px); height: 60px; border-radius: 30px;
+    --tb-bg: rgba(var(--bg-rgb), .58);
+    width: min(calc(100% - 20px), 460px); height: 68px; padding: 5px; bottom: calc(8px + var(--sab)); border-radius: 34px;
     background:
-      radial-gradient(130% 100% at 50% 130%, rgba(255, 255, 255, .1), transparent 62%),
-      linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .01) 55%, rgba(255, 255, 255, .035)),
-      var(--gl-tint);
-    backdrop-filter: blur(24px) saturate(1.9) brightness(1.06); -webkit-backdrop-filter: blur(24px) saturate(1.9) brightness(1.06);
-    box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, .22), inset 0 -1px 1px rgba(255, 255, 255, .06),
-      inset 0 -12px 20px -14px rgba(255, 255, 255, .18),
-      0 14px 34px -14px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .14);
-    transition: height .45s cubic-bezier(.22, 1, .36, 1), width .45s cubic-bezier(.22, 1, .36, 1), bottom .45s cubic-bezier(.22, 1, .36, 1),
-      background .4s ease, box-shadow .4s ease;
-    will-change: height, width;
+      linear-gradient(100deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 45%, color-mix(in srgb, var(--accent2) 7%, transparent)),
+      linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .015)),
+      var(--tb-bg);
+    backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, .13);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 12px 32px -10px rgba(0, 0, 0, .6), 0 2px 6px rgba(0, 0, 0, .2);
+    transition: height .45s cubic-bezier(.22, 1, .36, 1), width .45s cubic-bezier(.22, 1, .36, 1), bottom .45s cubic-bezier(.22, 1, .36, 1), background .4s ease;
   }
-  :root.tg .tabs::after { opacity: .7; }
-  :root.tg .tabs button { color: rgba(240, 242, 252, .72); text-shadow: 0 1px 2px rgba(0, 0, 0, .4); transition: color .35s ease, gap .45s cubic-bezier(.22, 1, .36, 1); }
-  :root.tg .tabs button > span { transition: opacity .3s ease, max-height .45s cubic-bezier(.22, 1, .36, 1), transform .45s cubic-bezier(.22, 1, .36, 1); max-height: 14px; }
-  :root.tg .tabs .t-ico { transition: transform .5s cubic-bezier(.22, 1, .36, 1), filter .35s ease, width .45s cubic-bezier(.22, 1, .36, 1), height .45s cubic-bezier(.22, 1, .36, 1); }
-  :root.tg .tabs button.on .t-ico { transform: translateY(-1px) scale(1.08); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 60%, transparent)); }
-  /* капля: плавно перетекает без отскока */
+  :root.tg .tabs::before, :root.tg .tabs::after, :root.tg .tab-ind::before { display: none; }
+  :root.tg .tabs button {
+    gap: 4px; border-radius: 28px; font-size: 11.5px; font-weight: 650; letter-spacing: .1px;
+    color: rgba(240, 242, 250, .9); text-shadow: none;
+    transition: color .3s ease, gap .45s cubic-bezier(.22, 1, .36, 1);
+  }
+  :root.tg .tabs button > span { max-height: 15px; transition: opacity .3s ease, max-height .45s cubic-bezier(.22, 1, .36, 1), transform .45s cubic-bezier(.22, 1, .36, 1); }
+  :root.tg .tabs .t-ico { width: 25px; height: 25px; stroke-width: 1.9; filter: none; transition: transform .45s cubic-bezier(.22, 1, .36, 1), width .45s cubic-bezier(.22, 1, .36, 1), height .45s cubic-bezier(.22, 1, .36, 1); }
+  :root.tg .tabs button.on { color: var(--accent2); }
+  :root.tg .tabs button.on .t-ico { transform: none; filter: none; stroke-width: 2.1; }
+  :root.tg .tabs button:active .t-ico { transform: scale(.9); }
+  /* подложка активной вкладки */
   :root.tg .tab-ind {
+    top: 5px; bottom: 5px; border-radius: 28px;
     background:
-      radial-gradient(90% 70% at 50% 115%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
-      linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, .04) 60%, rgba(255, 255, 255, .08));
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .3), inset 0 -6px 12px -8px rgba(255, 255, 255, .22), 0 4px 14px -8px rgba(0, 0, 0, .45);
-    transition: left .6s cubic-bezier(.22, 1, .36, 1), width .6s cubic-bezier(.22, 1, .36, 1), transform .4s cubic-bezier(.22, 1, .36, 1);
+      radial-gradient(80% 90% at 50% 100%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 75%),
+      rgba(255, 255, 255, .085);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07);
+    transition: left .5s cubic-bezier(.22, 1, .36, 1), width .5s cubic-bezier(.22, 1, .36, 1), transform .35s cubic-bezier(.22, 1, .36, 1);
   }
-  :root.tg .tab-ind.stretch { transform: scale(1.06, .94); }
+  :root.tg .tab-ind.stretch { transform: scale(1.04, .96); }
   /* компактный режим при прокрутке вниз: только значки */
-  :root.tg.tg-compact .tabs { height: 48px; width: min(calc(100% - 96px), 300px); bottom: calc(8px + var(--sab)); --gl-tint: rgba(var(--bg-rgb), .26); }
+  :root.tg.tg-compact .tabs { height: 52px; width: min(calc(100% - 90px), 310px); bottom: calc(8px + var(--sab)); }
   :root.tg.tg-compact .tabs button { gap: 0; }
   :root.tg.tg-compact .tabs button > span { opacity: 0; max-height: 0; transform: translateY(4px); }
-  :root.tg.tg-compact .tabs .t-ico { width: 20px; height: 20px; }
-  :root.tg.tg-compact #toasts { bottom: calc(66px + var(--sab)); }
+  :root.tg.tg-compact .tabs .t-ico { width: 23px; height: 23px; }
+  :root.tg body { padding-bottom: calc(92px + var(--sab)); }
+  :root.tg #toasts { bottom: calc(86px + var(--sab)); }
+  :root.tg.tg-compact #toasts { bottom: calc(68px + var(--sab)); }
+  /* светлая тема */
   :root.tg[data-theme="light"] .tabs {
-    --gl-tint: rgba(255, 255, 255, .4); --gl-shine: #fff; --gl-rim: rgba(255, 255, 255, .5);
-    backdrop-filter: blur(26px) saturate(1.6) brightness(1.18); -webkit-backdrop-filter: blur(26px) saturate(1.6) brightness(1.18);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .85), inset 0 -10px 18px -12px rgba(255, 255, 255, .6),
-      0 14px 32px -14px rgba(24, 28, 70, .3), 0 2px 8px rgba(24, 28, 70, .08);
+    --tb-bg: rgba(255, 255, 255, .7);
+    border-color: rgba(20, 24, 60, .08);
+    box-shadow: inset 0 1px 0 #fff, 0 12px 30px -12px rgba(24, 28, 70, .32), 0 2px 6px rgba(24, 28, 70, .08);
   }
-  :root.tg[data-theme="light"] .tabs button:not(.on) { color: #2e3348; }
-  :root.tg[data-theme="light"] .tabs button { text-shadow: 0 0 6px rgba(255, 255, 255, .9); }
+  :root.tg[data-theme="light"] .tabs button { text-shadow: none; }
+  :root.tg[data-theme="light"] .tabs button:not(.on) { color: #2b3044; }
+  :root.tg[data-theme="light"] .tabs button.on { color: var(--accent); }
   :root.tg[data-theme="light"] .tab-ind {
-    background: radial-gradient(90% 70% at 50% 115%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), rgba(255, 255, 255, .78);
-    box-shadow: inset 0 1px 1px #fff, 0 4px 14px -4px rgba(24, 28, 70, .22);
+    background: radial-gradient(80% 90% at 50% 100%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 75%), color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, .5));
+    box-shadow: none;
   }
-  :root.tg[data-theme="light"].tg-compact .tabs { --gl-tint: rgba(255, 255, 255, .55); }
 }
 @media (max-width: 1000px) and (prefers-reduced-motion: reduce) {
   :root.tg .tabs, :root.tg .tab-ind, :root.tg .tabs button > span, :root.tg .tabs .t-ico { transition: none; }
