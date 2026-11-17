@@ -28,19 +28,37 @@
   const P = (fn, ...a) => new Promise((res, rej) => fn.call(cs, ...a, (e, v) => e ? rej(e) : res(v)));
   const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej('timeout'), ms))]);
 
-  /* ---------- загрузка SDK Telegram ---------- */
+  /* ---------- кто открыл приложение: Telegram передаёт подписанные данные в адресе при запуске ----------
+     Запоминаем их сразу — даже если SDK загрузится медленно или не загрузится, вход по Telegram не теряется */
+  const hashInit = (() => {
+    try {
+      const h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+      const q = new URLSearchParams(location.search || '');
+      const raw = h.get('tgWebAppData') || q.get('tgWebAppData') || '';
+      if (raw) { try { sessionStorage.setItem('kc_tg_init', raw); } catch { } return raw; }
+      try { return sessionStorage.getItem('kc_tg_init') || ''; } catch { return ''; }
+    } catch { return ''; }
+  })();
+  const hashUser = (() => { try { return JSON.parse(new URLSearchParams(hashInit).get('user') || 'null'); } catch { return null; } })();
+
+  /* ---------- загрузка SDK Telegram ----------
+     Сначала своя копия с нашего сервера (telegram.org бывает медленным или недоступным), потом — с telegram.org */
   const sdk = new Promise(res => {
-    const s = document.createElement('script');
-    s.src = 'https://telegram.org/js/telegram-web-app.js';
-    s.onload = () => res(window.Telegram && window.Telegram.WebApp);
-    s.onerror = () => res(null);
-    document.head.appendChild(s);
-    setTimeout(() => res(window.Telegram && window.Telegram.WebApp), 6000);
+    const done = () => res(window.Telegram && window.Telegram.WebApp);
+    const load = (src, next) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = done;
+      s.onerror = next;
+      document.head.appendChild(s);
+    };
+    load('telegram-web-app.js', () => load('https://telegram.org/js/telegram-web-app.js', () => res(null)));
+    setTimeout(done, 8000);
   });
 
   /* ---------- облако → устройство ---------- */
   async function pull() {
-    const user = wa.initDataUnsafe && wa.initDataUnsafe.user;
+    const user = (wa.initDataUnsafe && wa.initDataUnsafe.user) || hashUser;
     const uid = user ? String(user.id) : '';
     // на одном телефоне может быть несколько аккаунтов Telegram — чужие оценки не показываем и не отправляем
     const was = ls.get('kc_tg_uid');
@@ -171,7 +189,7 @@
   const subOn = () => !!(st && st.sub > Date.now());
   const botLink = p => st && st.bot ? `https://t.me/${st.bot}${p ? '?' + p : ''}` : '';
   async function status() {
-    if (!API || !wa || !wa.initData) return null;
+    if (!API || !KinoraTG.initData) return null;
     try { st = await KinoraTG.api('status'); } catch { }
     return st;
   }
@@ -481,18 +499,18 @@
       if (!wa || !wa.BackButton) return;
       show ? wa.BackButton.show() : wa.BackButton.hide();
     },
-    get user() { return wa && wa.initDataUnsafe && wa.initDataUnsafe.user; },
+    get user() { return (wa && wa.initDataUnsafe && wa.initDataUnsafe.user) || hashUser; },
     // оплата: лимит игр включается, только когда сервер оплаты доступен
     get payOn() { return !!(API && wa && wa.initData && wa.openInvoice && wa.isVersionAtLeast && wa.isVersionAtLeast('6.1')); },
     async api(path, extra = {}) {
-      const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: wa.initData, ...extra }) });
+      const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: KinoraTG.initData, ...extra }) });
       const j = await r.json();
       if (!r.ok && !('cr' in j)) throw new Error(j.error || r.status);
       return j;
     },
-    get initData() { return wa && wa.initData; },
+    get initData() { return (wa && wa.initData) || hashInit; },
     // синхронизация оценок с Kinora на компьютере и телефоне (sync.js) — через свой сервер
-    get syncOn() { return !!(API && wa && wa.initData); },
+    get syncOn() { return !!(API && KinoraTG.initData); },
     get sub() { return subOn(); },
     started, settingsHTML, wireSettings, onShare, hubCards, hubClick, together,
     // открывает окно оплаты Telegram; результат — 'paid', 'cancelled', 'failed' или 'pending'
