@@ -125,32 +125,52 @@
     a.href = url; a.target = '_blank'; a.rel = 'noopener';
     document.body.append(a); a.click(); a.remove();
   }
+  // незавершённый вход храним на устройстве: на iPhone страница часто перезагружается, пока вы в Telegram,
+  // и без этого подтверждённый в боте вход терялся — приходилось входить снова и снова
+  const PEND = 'kc_login_pending', PEND_MS = 14 * 60000;
+  const pending = () => { const p = ls.get(PEND); return p && p.code && Date.now() - p.at < PEND_MS ? p : null; };
+  let pollBusy = false;
+  async function pollOnce() {
+    const p = pending();
+    if (!p) { stopPoll(); return; }
+    if (pollBusy) return;
+    pollBusy = true;
+    let r;
+    try { r = await post('login/poll', { code: p.code }); } catch { pollBusy = false; return; }
+    pollBusy = false;
+    if (r.gone) { ls.del(PEND); stopPoll(); refreshPanel(); return; }
+    if (!r.ok) return;
+    ls.del(PEND); stopPoll();
+    ls.set('kc_auth', { token: r.token, name: r.name, uid: String(r.uid) });
+    ls.del('kc_sync_base');   // первая синхронизация: оценки с устройства добавятся в аккаунт
+    toast(`👋 Вы вошли как ${r.name}. Объединяю оценки…`);
+    await sync();
+    refreshPanel();
+    if (state === 'ok') toast('✅ Готово: оценки с этого устройства сохранены в аккаунте');
+  }
+  function stopPoll() { clearInterval(loginPoll); loginPoll = null; }
+  function startPoll() {
+    if (loginPoll || !pending()) return;
+    loginPoll = setInterval(pollOnce, 2000);
+    pollOnce();
+  }
   async function login(root) {
     let st;
     try { st = await post('login/start', {}); } catch { toast('⚠ Нет связи с сервером Kinora. Проверьте интернет', 'warn'); return; }
+    ls.set(PEND, { code: st.code, link: st.link, at: Date.now() });
     openOut(st.link);
     const box = root.querySelector('.acc-box');
-    if (box) box.innerHTML = `<p class="s-note">Откроется Telegram — нажмите там <b>«Запустить»</b>, а потом <b>«Да, войти»</b>. Если Telegram не открылся, откройте ссылку на телефоне или компьютере, где он есть:<br><a href="${esc(st.link)}" target="_blank" rel="noopener">${esc(st.link)}</a></p>
+    if (box) box.innerHTML = waitHtml(st.link);
+    wireWait(root);
+    stopPoll(); startPoll();
+  }
+  function waitHtml(link) {
+    return `<p class="s-note">Откроется Telegram — нажмите там <b>«Запустить»</b>, а потом <b>«Да, войти»</b> и вернитесь сюда. Если Telegram не открылся, откройте ссылку на телефоне или компьютере, где он есть:<br><a href="${esc(link)}" target="_blank" rel="noopener">${esc(link)}</a></p>
       <p class="s-note">⏳ Жду подтверждения…</p><button class="btn" data-acc-cancel>Отмена</button>`;
+  }
+  function wireWait(root) {
     const cancel = root.querySelector('[data-acc-cancel]');
-    clearInterval(loginPoll);
-    const stop = () => { clearInterval(loginPoll); loginPoll = null; };
-    if (cancel) cancel.onclick = () => { stop(); refreshPanel(); };
-    const t0 = Date.now();
-    loginPoll = setInterval(async () => {
-      if (Date.now() - t0 > 10 * 60000) { stop(); refreshPanel(); toast('Время на вход истекло — попробуйте ещё раз'); return; }
-      let r;
-      try { r = await post('login/poll', { code: st.code }); } catch { return; }
-      if (r.gone) { stop(); refreshPanel(); return; }
-      if (!r.ok) return;
-      stop();
-      ls.set('kc_auth', { token: r.token, name: r.name, uid: String(r.uid) });
-      ls.del('kc_sync_base');   // первая синхронизация: оценки с устройства добавятся в аккаунт
-      toast(`👋 Вы вошли как ${r.name}. Объединяю оценки…`);
-      await sync();
-      refreshPanel();
-      if (state === 'ok') toast('✅ Готово: оценки с этого устройства сохранены в аккаунте');
-    }, 2000);
+    if (cancel) cancel.onclick = () => { ls.del(PEND); stopPoll(); refreshPanel(); };
   }
   async function logout() {
     if (!confirm('Выйти из аккаунта?\nОценки останутся на этом устройстве, но перестанут синхронизироваться.')) return;
@@ -172,6 +192,8 @@
       body = `<p class="s-note">Вы вошли через Telegram как <b>${esc(acc.name)}</b>. Оценки, списки и коллекции одинаковы в Kinora на всех устройствах, где вы вошли, и в Telegram.</p>
         <p class="s-note" data-sync-state>${stateText()}</p>
         <div class="bk-acts"><button class="btn" data-acc-sync>Синхронизировать сейчас</button><button class="btn ghost" data-acc-out>Выйти</button></div>`;
+    } else if (pending()) {
+      body = waitHtml(pending().link || '');
     } else {
       body = `<p class="s-note">Войдите через Telegram — оценки, списки и коллекции станут одинаковыми в Kinora на компьютере, телефоне и в Telegram. <b>Оценки, которые уже есть на этом устройстве, сохранятся</b> и добавятся в аккаунт.</p>
         <button class="btn accent" data-acc-in>✈ Войти через Telegram</button>`;
@@ -184,20 +206,25 @@
     if (q('[data-acc-in]')) q('[data-acc-in]').onclick = () => login(root);
     if (q('[data-acc-out]')) q('[data-acc-out]').onclick = logout;
     if (q('[data-acc-sync]')) q('[data-acc-sync]').onclick = () => sync(false);
+    wireWait(root);
   }
 
   document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !tgOn() && pending()) { stopPoll(); startPoll(); }
     if (!auth()) return;
     if (document.visibilityState === 'hidden') { if (timer) { clearTimeout(timer); timer = null; sync(); } }
     else if (Date.now() - lastAt > 60000) schedule(500);
   });
+
+  // вернулись из Telegram (на iPhone страница могла восстановиться из кэша или получить фокус без перезагрузки)
+  ['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { if (!tgOn() && !auth() && pending()) { stopPoll(); startPoll(); } }));
 
   window.KinoraSync = {
     html, wire,
     // app.js вызывает после каждого сохранения оценок, своих фильмов и коллекций
     dirty() { if (!applying) schedule(); },
     // после загрузки данных при запуске
-    start() { lastAt = ls.get('kc_sync_at') || 0; if (auth()) sync(); },
+    start() { lastAt = ls.get('kc_sync_at') || 0; if (auth()) sync(); else if (!tgOn() && pending()) startPoll(); },
     get on() { return !!auth(); },
   };
 })();
