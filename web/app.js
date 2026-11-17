@@ -3094,11 +3094,28 @@ function openGames(start) {
   gamesM.innerHTML = `<div class="backdrop"></div><div class="sheet roul games"><button class="x" title="Закрыть (Esc)">✕</button><div class="g-body"></div></div>`;
   $('.x', gamesM).onclick = $('.backdrop', gamesM).onclick = closeGames;
   gamesM.classList.add('open');
+  gamesTab(true);
   if (start === 'tourn') tournSetup(); else if (start === 'quiz') quizSetup(); else if (XG[start]) xSetup(start); else gamesHub();
   // лимит игр в Telegram: строка «осталось раундов» обновляется, когда сервер ответил
   premRefresh().then(() => { const l = $('.g-lim', gamesM); if (l) { l.outerHTML = playLine(); wirePlayLine(); } });
 }
-function closeGames() { gameStop(); gamesM.classList.remove('open'); }
+function closeGames() { gameStop(); gamesM.classList.remove('open'); gamesTab(false); }
+// на телефоне нижняя панель остаётся над окном игр, вкладка «Игры» подсвечена; после закрытия — снова прежняя вкладка
+let tabBeforeGames = null;
+function gamesTab(on) {
+  document.documentElement.classList.toggle('games-open', on);
+  const g = $('#tabs button[data-view="games"]');
+  if (!g) return;
+  if (on) {
+    const cur = $('#tabs button.on');
+    if (cur && cur !== g) tabBeforeGames = cur;
+    $$('#tabs button').forEach(x => x.classList.toggle('on', x === g));
+  } else if (g.classList.contains('on')) {
+    const back = tabBeforeGames || $('#tabs button[data-view="all"]');
+    $$('#tabs button').forEach(x => x.classList.toggle('on', x === back));
+  }
+  moveTabInd();
+}
 // из итогов игры — сразу в окно фильма
 function gameOpenFilm(m) { closeGames(); S.list = [m]; openDetail(m); }
 
@@ -4133,7 +4150,9 @@ async function init() {
   }, { passive: true });
 
   $$('#tabs button').forEach(b => b.onclick = () => {
-    if (b.dataset.view === 'games') { openGames(); return; }
+    if (b.dataset.view === 'games') { if (!gamesM.classList.contains('open')) openGames(); return; }
+    // игры открыты поверх каталога, а нажата другая вкладка — закрываем игры и переходим
+    if (gamesM.classList.contains('open')) closeGames();
     $$('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     moveTabInd();
     S.view = b.dataset.view === 'lists' ? (isListView(listSub) ? listSub : 'fav') : b.dataset.view;

@@ -2409,3 +2409,11 @@ body.cols3 .dens-btn .d3 { display: block; }
 @media (max-width: 1000px) and (prefers-reduced-motion: reduce) {
   :root.tg .tabs, :root.tg .tab-ind, :root.tg .tabs button > span, :root.tg .tabs .t-ico { transition: none; }
 }
+
+/* ===== окно игр на телефоне: нижняя панель остаётся видна поверх него ===== */
+@media (max-width: 1000px) {
+  :root.games-open .top { z-index: 55; background: transparent !important; border-bottom-color: transparent !important; pointer-events: none; }
+  :root.games-open .top > :not(#tabs) { visibility: hidden; }
+  :root.games-open #tabs { pointer-events: auto; }
+  :root.games-open .games { padding-bottom: calc(100px + var(--sab)); }
+}
