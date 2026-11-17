@@ -372,6 +372,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .d-info .who { font-weight: 650; font-size: 15px; }
 .actors { color: var(--text2); }
 .d-desc { margin: 20px 0 0; color: var(--text3); font: 15.5px/1.7 var(--sans); max-width: 720px; }
+.d-about .d-desc + .d-desc { margin-top: 10px; }
 
 .rate { margin-top: 30px; padding: 28px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: grid; grid-template-columns: 1fr 200px; gap: 34px; }
 .rate h3 { margin: 0 0 4px; font: 700 24px var(--display); }

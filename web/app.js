@@ -94,6 +94,13 @@ const localPosters = {};
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Подробное описание (m.about) — в программе, APK и на сайте; в Telegram остаётся короткое m.desc
+const IN_TG = /tgWebAppData=/.test(location.hash + location.search);
+function aboutHTML(m) {
+  const long = !IN_TG && m.about && m.about.length > (m.desc || '').length ? m.about : '';
+  if (!long) return m.desc ? `<p class="d-desc">${esc(m.desc)}</p>` : '';
+  return `<div class="d-about">${long.split(/\n{2,}/).map(p => `<p class="d-desc">${esc(p)}</p>`).join('')}</div>`;
+}
 const hue = s => { let h = 7; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
 const tierIdx = s => TIERS.findIndex(t => s >= t.min);
 const fmt = s => (s >= 10 ? '10' : s.toFixed(1));
@@ -118,7 +125,7 @@ function keep(k, v) {
 }
 
 /* ---------- проверка данных из файлов: чужая или испорченная копия не должна ломать приложение ---------- */
-const MOVIE_STR = ['id', 'title', 'orig', 'director', 'desc', 'kp', 'imdbId', 'wiki', 'ivi', 'ruwiki', 'okko'];
+const MOVIE_STR = ['id', 'title', 'orig', 'director', 'desc', 'about', 'kp', 'imdbId', 'wiki', 'ivi', 'ruwiki', 'okko'];
 const MOVIE_NUM = ['year', 'imdb', 'imdbVotes', 'min', 'frame'];
 const MOVIE_ARR = ['genres', 'actors', 'country', 'mood'];
 function cleanMovie(m) {
@@ -1339,7 +1346,7 @@ function openDetail(m, from) {
             ${m.country && m.country.length ? `<dt>Страна</dt><dd>${m.country.map(esc).join(', ')}</dd>` : ''}
             <dt>В ролях</dt><dd class="actors">${personLinks(m.actors)}</dd>
           </dl>
-          ${m.desc ? `<p class="d-desc">${esc(m.desc)}</p>` : ''}
+          ${aboutHTML(m)}
           <div class="where"><span class="where-l">Где смотреть</span>${watchLinks(m)}</div>
           <div class="where"><span class="where-l">Трейлер</span>${trailerLinks(m)}</div>
           <div class="wlog"></div>
